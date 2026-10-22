@@ -273,4 +273,103 @@ export function gameoverJingle() {
   return S;
 }
 
-export const SONGS = { boss: bossTheme, final: finalTheme, title: titleTheme, approach: approachTheme, victory: victoryJingle, gameover: gameoverJingle };
+// ------------------------------------------------------------------ ZONE G
+// "MUDFLAT STAMPEDE" (E lydian / C#m, 172 BPM; final form 180 BPM, +1 semitone, choir):
+// tribal-funk drums (syncopated kick, ghost-note snare, conga toms, 16th shaker),
+// slap bass (octave pops), stabbing brass riffs and a bright lydian lead (A#).
+// 1-bar percussion intro + 24-bar loop (A riff 8, B soaring 8, C drum break 4, D build 4).
+export function mudTheme(opts = {}) {
+  const FINAL = !!opts.final;
+  const S = song(FINAL ? 180 : 172);
+  const { add } = S;
+  const INTRO = 1;
+  const bar = (b) => (INTRO + b) * 16;
+  const E2 = 40, Fs = 42, Gs = 44, A = 45, B = 47, Cs = 49;
+  // intro: congas + shaker + a pickup
+  for (let k = 0; k < 16; k++) add(k, 'hat', 0, 1, k % 4 === 0 ? 0.7 : 0.35, 0.4);
+  [[0, 57], [3, 52], [6, 57], [8, 52], [10, 55], [11, 57], [12, 59], [13, 60], [14, 62], [15, 64]].forEach(([k, m]) => add(k, 'tom', m, 1, 0.7));
+  add(12, 'ohit', [64, 68, 71], 2, 0.8);
+  // chords: [root, quality]
+  const prog = [
+    [E2, 'M'], [Fs, 'M'], [E2, 'M'], [Fs, 'M'], [Cs, 'm'], [A, 'M'], [B, 'M'], [B, 'M'],
+    [A, 'M'], [B, 'M'], [Gs, 'm'], [Cs, 'm'], [A, 'M'], [B, 'M'], [E2, 'M'], [E2, 'sus'],
+    [Cs, 'm'], [Cs, 'm'], [A, 'M'], [B, 'M'],
+    [A, 'M'], [B, 'M'], [Cs, 'm'], [B, 'M'],
+  ];
+  // slap bass pattern (offsets from root; 'p' = popped octave, accented)
+  const SLAP = [[0, 0, 1], [3, 12, 0.9], [4, 0, 0.7], [6, 0, 0.8], [7, 12, 0.9], [10, 0, 0.8], [11, 7, 0.7], [12, 12, 1], [14, 10, 0.8], [15, 12, 0.7]];
+  const SLAP_D = [[0, 0, 1], [2, 0, 0.8], [4, 12, 0.9], [6, 0, 0.8], [8, 0, 1], [10, 12, 0.9], [12, 0, 0.9], [14, 12, 1]];
+  prog.forEach(([root, q], b) => {
+    const s0 = bar(b);
+    const sec = b < 8 ? 'A' : b < 16 ? 'B' : b < 20 ? 'C' : 'D';
+    const r = root - 12; // bass register
+    // ---- slap bass
+    const pat = sec === 'D' ? SLAP_D : SLAP;
+    if (sec !== 'C' || b === 19) for (const [k, o, v] of pat) add(s0 + k, 'bass', r + o, o >= 12 ? 1 : 2, v);
+    else for (const k of [0, 8]) add(s0 + k, 'bass', r, 4, 0.9);
+    // ---- pad / choir
+    add(s0, FINAL ? 'choir' : 'pad', chordNotes(root, q, 60), 16, sec === 'C' ? 0.5 : 0.75);
+    // ---- brass riffs
+    const ch = chordNotes(root, q, 66);
+    if (sec === 'A') for (const [k, l, v] of [[2, 1, 0.8], [3, 2, 0.9], [9, 1, 0.75], [10, 2, 0.9], [14, 2, 0.8]]) add(s0 + k, 'brass', ch, l, v);
+    else if (sec === 'B') { add(s0, 'brass', ch, 6, 0.6); add(s0 + 10, 'brass', ch, 2, 0.8); add(s0 + 13, 'brass', ch, 3, 0.85); }
+    else if (sec === 'D') for (let k = 0; k < 16; k += 2) add(s0 + k, 'brass', ch.map((n) => n + (b === 23 ? (k >> 2) : 0)), 1, 0.55 + k * 0.02);
+    // ---- percussion
+    const D = (k, i, v = 1, n = 0, pn) => add(s0 + k, i, n, 1, v, pn);
+    for (let k = 0; k < 16; k++) D(k, 'hat', k % 4 === 2 ? 0.75 : 0.32, 0, (k & 1) ? 0.45 : -0.25);
+    if (sec === 'C') {
+      // tribal drum break: toms/congas lead
+      [[0, 45], [2, 52], [3, 57], [6, 45], [7, 52], [8, 57], [10, 45], [11, 50], [12, 57], [13, 59], [14, 52], [15, 45]].forEach(([k, m]) => D(k, 'tom', 0.75, m));
+      D(0, 'kick'); D(7, 'kick', 0.8); D(10, 'kick', 0.9);
+      if (b === 16) D(0, 'crash', 1);
+      if (b === 19) for (let k = 8; k < 16; k++) D(k, 'snare', 0.3 + (k - 8) * 0.09);
+    } else {
+      for (const k of sec === 'D' ? [0, 4, 8, 12] : [0, 3, 7, 10, 14]) D(k, 'kick', k === 0 ? 1 : 0.85);
+      D(4, 'snare'); D(12, 'snare');
+      for (const k of [2, 9, 15]) D(k, 'snare', 0.18); // ghost notes
+      [[5, 57], [6, 52], [13, 59]].forEach(([k, m]) => D(k, 'tom', 0.45, m)); // conga answers
+      if (b % 4 === 0) D(0, 'crash', 0.8);
+      if (b === 7 || b === 15) [[12, 57], [13, 52], [14, 48], [15, 45]].forEach(([k, m]) => D(k, 'tom', 0.9, m));
+      if (sec === 'D' && b === 23) for (let k = 0; k < 16; k++) D(k, 'snare', 0.3 + k * 0.045);
+    }
+  });
+  // ---- lydian lead (A# = 70/82 is the signature colour); [step, midi, len]
+  const LEAD = {
+    0: [[0, 71, 2], [2, 76, 2], [4, 78, 2], [6, 82, 4], [10, 80, 2], [12, 78, 4]],
+    1: [[0, 78, 6], [6, 80, 2], [8, 82, 4], [12, 85, 4]],
+    2: [[0, 83, 3], [3, 82, 3], [6, 80, 2], [8, 78, 2], [10, 76, 6]],
+    3: [[0, 78, 4], [4, 82, 4], [8, 80, 8]],
+    4: [[0, 76, 2], [2, 80, 2], [4, 83, 4], [8, 85, 4], [12, 83, 4]],
+    5: [[0, 81, 6], [6, 80, 2], [8, 76, 4], [12, 73, 4]],
+    6: [[0, 78, 3], [3, 80, 3], [6, 82, 2], [8, 83, 8]],
+    7: [[0, 87, 4], [4, 85, 4], [8, 83, 8]],
+    8: [[0, 81, 8], [8, 83, 4], [12, 85, 4]],
+    9: [[0, 87, 12], [12, 85, 2], [14, 83, 2]],
+    10: [[0, 83, 6], [6, 80, 2], [8, 78, 8]],
+    11: [[0, 80, 4], [4, 82, 4], [8, 85, 8]],
+    12: [[0, 88, 6], [6, 87, 2], [8, 85, 4], [12, 83, 4]],
+    13: [[0, 82, 6], [6, 83, 2], [8, 87, 8]],
+    14: [[0, 88, 12], [12, 87, 2], [14, 83, 2]],
+    15: [[0, 82, 16]],
+    17: [[8, 85, 2], [10, 87, 2], [12, 88, 4]],
+    19: [[8, 87, 2], [10, 88, 2], [12, 90, 4]],
+    20: [[0, 85, 8], [8, 87, 8]],
+    21: [[0, 87, 8], [8, 89, 8]],
+    22: [[0, 88, 16]],
+    23: [[0, 90, 8], [8, 94, 6]],
+  };
+  for (const [b, notes] of Object.entries(LEAD)) for (const [k, m, l] of notes) add(bar(Number(b)) + k, 'lead', m - 12, l, 1);
+  S.loopStart = INTRO * 16;
+  S.loopEnd = (INTRO + prog.length) * 16;
+  S.loop = true;
+  S.delaySteps = 3;
+  if (FINAL) {
+    const PITCHED = new Set(['bass', 'pad', 'brass', 'lead', 'bell', 'ohit', 'choir', 'timp', 'tom']);
+    for (const e of S.events) if (PITCHED.has(e.i)) e.n = Array.isArray(e.n) ? e.n.map((m) => m + 1) : e.n + 1;
+  }
+  S.gain = 1.0;
+  return S;
+}
+export const mudFinalTheme = () => mudTheme({ final: true });
+
+export const SONGS = { mud: mudTheme, mudFinal: mudFinalTheme, boss: bossTheme, final: finalTheme, title: titleTheme, approach: approachTheme, victory: victoryJingle, gameover: gameoverJingle };

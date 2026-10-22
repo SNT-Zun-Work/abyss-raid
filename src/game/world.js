@@ -14,9 +14,12 @@ import * as hud from './hud.js';
 import * as scenes from './scenes.js';
 import * as audio from './audio.js';
 
-export function createWorld({ seed = 1, scene = 'title', bossHpFrac = 1 } = {}) {
+export function createWorld({ seed = 1, scene = 'title', bossHpFrac = 1, zone = 'V' } = {}) {
   const world = {
     seed,
+    zone,              // current zone letter: 'V' axolotl, 'G' mudskipper (see boss.js BOSSES)
+    startZone: zone,   // zone the current run started from (title zone select)
+    continues: 0,      // continues used this run
     frame: 0,          // presentation clock: always advances
     gameFrame: 0,      // gameplay clock: advances only when gameplay updates ran (not during hitstop/pause)
     scene: null,
@@ -61,8 +64,9 @@ export function createWorld({ seed = 1, scene = 'title', bossHpFrac = 1 } = {}) 
 // whatever happened before. Persistent across runs: seed, hiScore, scene
 // bookkeeping (the caller sets scene right after), and module-internal
 // caches (sprites) which init() functions keep.
-export function resetRun(world) {
+export function resetRun(world, zone = world.startZone || 'V') {
   Object.assign(world, {
+    zone, startZone: zone, continues: 0,
     frame: 0, gameFrame: 0, paused: false,
     rng: makeRng(world.seed),
     fxRng: makeRng(world.seed ^ 0x9e3779b9),
@@ -76,6 +80,29 @@ export function resetRun(world) {
   boss.init(world);
   bullets.init(world);
   hud.init(world);
+}
+
+// Advance to another zone mid-run (boss rush): the player keeps score, lives and
+// power; boss, bullets, items, effects and background are rebuilt for the zone.
+// Deterministic: gameplay RNG continues its stream.
+export function enterZone(world, zone) {
+  Object.assign(world, { zone, pShots: [], eShots: [], items: [], hitstop: 0, flash: 0, shake: 0 });
+  background.init(world);
+  fx.init(world);
+  boss.init(world);
+  bullets.init(world);
+  if (typeof player.enterZone === 'function') player.enterZone(world);
+}
+
+// Arcade continue after game over: the fight resumes where it was (boss keeps its
+// damage/phase), the player comes back with a fresh stock; score resets to 0 and
+// the number of continues is kept (shown on the HUD / tally, like real arcades).
+export function continueRun(world) {
+  world.continues++;
+  world.score = 0;
+  world.eShots = [];
+  if (typeof player.onContinue === 'function') player.onContinue(world);
+  else { world.player.lives = 2; world.player.alive = false; world.player.respawn = 1; }
 }
 
 // Gameplay events: producers emit into world.events during step N; at the

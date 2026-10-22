@@ -36,6 +36,7 @@ const seedParam = Number(params.get('seed'));
 let world = createWorld({
   seed: params.has('seed') && Number.isInteger(seedParam) ? seedParam : 1,
   scene: (shotDef && shotDef.scene) || params.get('scene') || 'title',
+  zone: (shotDef && shotDef.zone) || (params.get('zone') || 'V').toUpperCase(),
   bossHpFrac: shotDef && shotDef.bossHpFrac !== undefined ? shotDef.bossHpFrac : Number(params.get('hp') || 1),
 });
 

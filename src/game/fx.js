@@ -11,6 +11,9 @@
 //   bubbleTrail(world, x, y)            one exhaust bubble (call every few frames from engines)
 //   heatHaze(world, x, y, w, h, frames=30)  shimmering row-offset distortion band (e.g. giga laser); drawn in drawUnder
 //   screenRumble(world, frames, px)         sustained shake: keeps world.shake ≥ px (easing out) for `frames`
+//   splash(world, x, y?, size)          zone G: droplet crown + foam ring + bubbles (y defaults to world.bg.surfaceY)
+//   wake(world, x)                      zone G: surface disturbance over a submerged boss (call every few frames)
+//   mudBurst(world, x, y)               zone G: mud-ball impact (brown clods, puffs, chunks)
 //
 // Layers: drawUnder (smoke, fireballs, debris, bubbles — behind player & bullets,
 // so explosions never hide enemy shots) and drawOver (flash stars, sparks,
@@ -25,6 +28,7 @@ const SURFACE_Y = 10;     // bubbles pop here
 const MAX_BUBBLES = 70;   // keep bubbles from cluttering big death sequences
 
 const K_FIRE = 0, K_SMOKE = 1, K_SPARK = 2, K_FLASH = 3, K_DEBRIS = 4, K_BUBBLE = 5, K_POPUP = 6, K_RING = 7, K_GLOW = 8;
+const K_DROP = 9, K_FOAM = 10, K_MUD = 11;   // zone G water / mud FX
 const ESSENTIAL = new Set([K_FIRE, K_FLASH, K_POPUP, K_RING, K_GLOW]);
 
 export function init(world) {
@@ -224,9 +228,15 @@ export function update(world) {
         p.vy = Math.max(-(0.55 + p.s * 0.22), p.vy - 0.012);
         p.vx *= 0.94;
         p.x += p.vx + Math.sin(p.t * 0.15 + p.ph) * 0.22; p.y += p.vy;
-        if (p.y < SURFACE_Y) p.t = p.life;
+        if (p.y < surfaceTop(world)) p.t = p.life;
         break;
       case K_POPUP: p.y += p.vy; p.vy *= 0.95; break;
+      case K_DROP:
+        p.vy += 0.14; p.vx *= 0.99; p.x += p.vx; p.y += p.vy;
+        if (p.s === 0 && p.vy > 0 && p.y > surfaceY(world) + 1) p.t = p.life;   // fell back into the sea
+        if (p.y > H + 8) p.t = p.life;
+        break;
+      case K_MUD: p.x += p.vx; p.y += p.vy; p.vy = p.vy * 0.97 + 0.01; break;
       default: break;
     }
     if (p.t >= p.life) { if (p.k === K_BUBBLE) st.nBub--; st.spare.push(p); swapRemove(P, i); }
@@ -283,6 +293,7 @@ export function drawUnder(ctx, world) {
     const b = A.bubbles[p.s];
     ctx.drawImage(b, Math.round(p.x - (b.width >> 1)), Math.round(p.y - (b.height >> 1)));
   }
+  drawMudPuffs(ctx, world);
   drawHazes(ctx, world);
   ctx.imageSmoothingEnabled = smooth;
 }
@@ -343,6 +354,7 @@ export function drawOver(ctx, world) {
     const s = p.spr;
     ctx.drawImage(s, Math.round(p.x - s.width / 2), Math.round(p.y - s.height / 2));
   }
+  drawWater(ctx, world);
   ctx.imageSmoothingEnabled = smooth;
 }
 
@@ -385,5 +397,112 @@ function drawHazes(ctx, world) {
     ctx.fillStyle = `rgba(255,210,170,${(0.035 * fade).toFixed(3)})`;
     for (let y = y0 + ((z.t >> 1) % 7); y < y1; y += 7) ctx.fillRect(x0, y, w, 1);
     ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+// ------------------------------------------------------ zone G: water / mud
+// Sea surface y (zone G: world.bg.surfaceY); elsewhere the cavern ceiling.
+function surfaceY(world) {
+  const bg = world.bg;
+  return bg && typeof bg.surfaceY === 'number' ? bg.surfaceY : Math.round(H * 0.66);
+}
+function surfaceTop(world) { return world.zone === 'G' ? surfaceY(world) : SURFACE_Y; }
+
+const SPLASH = { small: { n: 10, k: 0.7, rings: 1, col: 0 }, medium: { n: 20, k: 1, rings: 1, col: 3 }, large: { n: 34, k: 1.3, rings: 2, col: 7 } };
+
+// splash(world, x, y?, size): crown of droplets + foam ring(s) on the surface +
+// bubbles below. y defaults to the surface. size 'small'|'medium'|'large' or a number (≈ scale).
+export function splash(world, x, y, size = 'medium') {
+  const R = world.fxRng;
+  const c = typeof size === 'number' ? { n: Math.round(18 * size), k: size, rings: size > 1.2 ? 2 : 1, col: Math.round(5 * size) } : SPLASH[size] || SPLASH.medium;
+  const yy = typeof y === 'number' ? y : surfaceY(world);
+  for (let i = 0; i < c.n; i++) {
+    const p = spawn(world, K_DROP, x + R.range(-6, 6) * c.k, yy - 1);
+    if (!p) break;
+    const side = R.range(-1, 1);
+    p.vx = side * R.range(0.6, 1.8) * c.k; p.vy = -R.range(1.6, 3.6) * c.k * (1 - Math.abs(side) * 0.35);
+    p.life = 90; p.s = 0; p.ph = R.next() < 0.3 ? 1 : 0;
+  }
+  for (let i = 0; i < c.col; i++) {        // central column
+    const p = spawn(world, K_DROP, x + R.range(-2, 2), yy - 1);
+    if (!p) break;
+    p.vx = R.range(-0.25, 0.25); p.vy = -R.range(4, 6.2) * Math.min(1.3, c.k); p.life = 90; p.s = 0; p.ph = 1;
+  }
+  for (let i = 0; i < c.rings; i++) {
+    const p = spawn(world, K_FOAM, x, yy);
+    if (!p) break;
+    p.d = i * 7; p.r0 = 4; p.r1 = 22 * c.k + i * 10; p.life = 30;
+  }
+  for (let i = 0; i < Math.round(4 * c.k); i++) {
+    const p = spawn(world, K_BUBBLE, x + R.range(-10, 10) * c.k, yy + R.range(4, 18));
+    if (!p) break;
+    p.s = R.next() < 0.6 ? 0 : 1; p.vx = R.range(-0.2, 0.2); p.vy = -R.range(0.2, 0.5); p.life = 80; p.ph = R.range(0, 6.28);
+  }
+  if (c.k >= 1.2) addShake(world, 2);
+}
+
+// wake(world, x): surface disturbance above a submerged boss — call every few
+// frames while it lurks (foam ripple, a couple of drops, bubbles rising).
+export function wake(world, x) {
+  const R = world.fxRng, sy = surfaceY(world);
+  const f = spawn(world, K_FOAM, x + R.range(-6, 6), sy);
+  if (f) { f.r0 = 2; f.r1 = R.range(8, 14); f.life = 24; }
+  for (let i = 0; i < 2; i++) {
+    const p = spawn(world, K_DROP, x + R.range(-8, 8), sy - 1);
+    if (!p) break;
+    p.vx = R.range(-0.6, 0.6); p.vy = -R.range(0.8, 1.8); p.life = 40; p.s = 0; p.ph = 0;
+  }
+  const b = spawn(world, K_BUBBLE, x + R.range(-12, 12), sy + R.range(6, 26));
+  if (b) { b.s = R.next() < 0.7 ? 0 : 1; b.vx = 0; b.vy = -R.range(0.3, 0.6); b.life = 60; b.ph = R.range(0, 6.28); }
+}
+
+// mudBurst(world, x, y): mud ball impact — brown clods flying + mud puffs + chunks.
+export function mudBurst(world, x, y) {
+  const R = world.fxRng;
+  for (let i = 0; i < 14; i++) {
+    const p = spawn(world, K_DROP, x, y - 1);
+    if (!p) break;
+    const a = R.range(-Math.PI * 0.95, -Math.PI * 0.05), sp = R.range(1, 3.2);
+    p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.life = R.int(30, 60); p.s = 1; p.ph = R.next() < 0.4 ? 1 : 0;
+  }
+  for (let i = 0; i < 3; i++) {
+    const p = spawn(world, K_MUD, x + R.range(-6, 6), y - R.range(0, 6));
+    if (!p) break;
+    p.vx = R.range(-0.3, 0.3); p.vy = R.range(-0.5, -0.15); p.life = R.int(30, 48); p.d = i * 3; p.sc = R.next() < 0.4 ? 2 : 1;
+  }
+  for (let i = 0; i < 3; i++) debris(world, x, y - 2, R.range(-1.5, 1.5), -R.range(1, 2.4), R.next() < 0.5 ? '#4a3424' : '#5e4630');
+  const f = spawn(world, K_FLASH, x, y); if (f) { f.s = 0; f.life = 3; }
+}
+
+const DROP_COL = [['#cfeeff', '#ffffff'], ['#4e3422', '#7a5638']];
+function drawMudPuffs(ctx, world) {
+  const P = world.fxState.parts;
+  const A = getFxArt();
+  // mud puffs
+  const sm = A.mud;
+  for (const p of P) {
+    if (p.k !== K_MUD || p.d > 0) continue;
+    const f = Math.min(sm.frames - 1, ((p.t / p.life) * sm.frames) | 0), sz = sm.S * p.sc;
+    ctx.drawImage(sm.sheet, f * sm.S, 0, sm.S, sm.S, Math.round(p.x - sz / 2), Math.round(p.y - sz / 2), sz, sz);
+  }
+}
+function drawWater(ctx, world) {
+  const P = world.fxState.parts;
+  // foam rings on the surface
+  for (const p of P) {
+    if (p.k !== K_FOAM || p.d > 0) continue;
+    const q = p.t / p.life, r = p.r0 + (p.r1 - p.r0) * (1 - (1 - q) ** 2);
+    ctx.globalAlpha = 1 - q;
+    ctx.strokeStyle = '#e8f8ff'; ctx.lineWidth = q < 0.4 ? 2 : 1;
+    ctx.beginPath(); ctx.ellipse(Math.round(p.x), Math.round(p.y), r, Math.max(1, r * 0.16), 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // droplets / clods
+  for (const p of P) {
+    if (p.k !== K_DROP || p.d > 0) continue;
+    const col = DROP_COL[p.s];
+    ctx.fillStyle = col[p.ph ? 1 : 0];
+    const x = Math.round(p.x), y = Math.round(p.y);
+    ctx.fillRect(x, y, p.ph ? 2 : 1, 2);
   }
 }

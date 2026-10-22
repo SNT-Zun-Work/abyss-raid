@@ -822,6 +822,104 @@ export const SFX = {
     chain_(o, og, out);
     for (let k = 0; k < 4; k++) VOICES.tom(E, out, t + 0.08 + k * 0.17, 33 + (k % 2) * 3, 0.2, 0.5);
   }],
+  // ---- zone G (mudskipper) SFX
+  splash: [0.08, (E, out, t) => {
+    const n = noise(E, t, t + 0.6);
+    const bp = filt(E, 'bandpass', 1800, 0.7);
+    bp.frequency.setValueAtTime(3200, t);
+    bp.frequency.exponentialRampToValueAtTime(900, t + 0.5);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.32, t);
+    g.gain.setTargetAtTime(0, t + 0.03, 0.12);
+    chain_(n, bp, g, out);
+    const o = osc(E, 'sine', 260, t, t + 0.15);
+    o.frequency.exponentialRampToValueAtTime(90, t + 0.12);
+    const og = gain(E);
+    og.gain.setValueAtTime(0.25, t);
+    og.gain.setTargetAtTime(0, t + 0.01, 0.04);
+    chain_(o, og, out);
+    send(E, g, 0.3);
+  }],
+  leap: [0.3, (E, out, t) => {
+    // whoosh up + mechanical servo whine
+    const d = 0.6;
+    const n = noise(E, t, t + d);
+    const bp = filt(E, 'bandpass', 500, 1.5);
+    bp.frequency.setValueAtTime(400, t);
+    bp.frequency.exponentialRampToValueAtTime(2600, t + d);
+    const g = gain(E);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.28, t + 0.15);
+    g.gain.linearRampToValueAtTime(0, t + d);
+    chain_(n, bp, g, out);
+    const o = osc(E, 'sawtooth', 180, t, t + d);
+    o.frequency.exponentialRampToValueAtTime(520, t + d);
+    const og = gain(E);
+    og.gain.setValueAtTime(0.05, t);
+    og.gain.linearRampToValueAtTime(0, t + d);
+    chain_(o, filt(E, 'lowpass', 1400), og, out);
+    SFX.splash[1](E, out, t);
+  }],
+  land: [0.25, (E, out, t) => {
+    // heavy thud: big sub boom + mud slap + metal clank
+    boom(E, out, t, 1.1, 420, 48, 1);
+    VOICES.timp(E, out, t, 28, 0.8, 1);
+    const n = noise(E, t, t + 0.25);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.35, t);
+    g.gain.setTargetAtTime(0, t, 0.05);
+    chain_(n, filt(E, 'bandpass', 700, 1), g, out);
+    SFX.armHit[1](E, out, t + 0.02);
+  }],
+  mudLob: [0.09, (E, out, t) => {
+    // wet "plop" launch
+    const o = osc(E, 'sine', 180, t, t + 0.18);
+    o.frequency.exponentialRampToValueAtTime(420, t + 0.06);
+    o.frequency.exponentialRampToValueAtTime(140, t + 0.16);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.28, t);
+    g.gain.setTargetAtTime(0, t + 0.03, 0.04);
+    chain_(o, filt(E, 'lowpass', 900), g, out);
+    const n = noise(E, t, t + 0.1);
+    const ng = gain(E);
+    ng.gain.setValueAtTime(0.12, t);
+    ng.gain.setTargetAtTime(0, t, 0.02);
+    chain_(n, filt(E, 'lowpass', 1200), ng, out);
+  }],
+  tidalWave: [2.0, (E, out, t) => {
+    // long rising surf roar -> crash, with a sub swell
+    const d = 3.4;
+    const n = noise(E, t, t + d);
+    const lp = filt(E, 'lowpass', 400, 0.8);
+    lp.frequency.setValueAtTime(300, t);
+    lp.frequency.exponentialRampToValueAtTime(3500, t + d * 0.7);
+    lp.frequency.exponentialRampToValueAtTime(900, t + d);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.02, t);
+    g.gain.exponentialRampToValueAtTime(0.55, t + d * 0.7);
+    g.gain.linearRampToValueAtTime(0, t + d);
+    chain_(n, lp, g, out);
+    const lfo = osc(E, 'sine', 0.9, t, t + d);
+    const lg = gain(E, 0.12);
+    chain_(lfo, lg); lg.connect(g.gain);
+    const sub = osc(E, 'sine', 30, t, t + d);
+    const sg = gain(E);
+    sg.gain.setValueAtTime(0, t);
+    sg.gain.linearRampToValueAtTime(0.4, t + d * 0.7);
+    sg.gain.linearRampToValueAtTime(0, t + d);
+    chain_(sub, sg, out);
+    send(E, g, 0.5);
+    boom(E, out, t + d * 0.7, 1.4, 900, 45, 0.9);
+    duckLight(E, t, d);
+  }],
+  // continue countdown beep
+  count: [0.2, (E, out, t) => {
+    const o = osc(E, 'square', 880, t, t + 0.12);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.08, t);
+    g.gain.setTargetAtTime(0, t + 0.06, 0.02);
+    chain_(o, filt(E, 'lowpass', 3000), g, out);
+  }],
   // presentation extras
   start: [0.3, (E, out, t) => {
     [62, 69, 74, 81].forEach((m, i) => VOICES.bell(E, out, t + i * 0.07, m, 0.3, 1.6));

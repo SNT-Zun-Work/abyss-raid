@@ -47,26 +47,37 @@ export function updateEvents(world) {
         break;
       }
       case 'gillKill': {
+        if (e.part === 'eye') {
+          // zone G eye turrets: "EYE n/2"; the last one folds into the BLINDED display
+          const total = Math.max(1, Number(e.total) || 2);
+          const eleft = clamp(Number(e.left) || 0, 0, total);
+          if (eleft > 0) S.popups.push({ text: `EYE ${total - eleft}/${total}`, x: Number(e.x) || W / 2, y: Number(e.y) || H / 2, t: 0, life: 44, style: 'red' });
+          if (Number(e.regrowIn) > 0) S.eyeRegen = Number(e.regrowIn);
+          if (!S.eyeHintShown) { S.eyeHintShown = true; S.hint = { t: 0, msg: 'SHOOT BOTH EYES \u2192 BLINDED' }; }
+          S.gillFlash = 16;
+          break;
+        }
         const left = clamp(Number(e.left) || 0, 0, N_GILLS);
         // the final gill folds into the STUN display (no separate popup)
         if (left > 0) S.popups.push({ text: `GILL ${N_GILLS - left}/${N_GILLS}`, x: Number(e.x) || W / 2, y: Number(e.y) || H / 2, t: 0, life: 44, style: 'red' });
         if (Number(e.regrowIn) > 0) S.regrowIn = Number(e.regrowIn);
         S.estLeft = S.estLeft.map((v) => (v > 0 ? v + 300 : v)); // fallback: kills stall other stumps
         S.pendKill = (S.pendKill || []).concat([{ x: Number(e.x), y: Number(e.y) }]);
-        if (!S.hintShown) { S.hintShown = true; S.hint = { t: 0 }; }
+        if (!S.hintShown) { S.hintShown = true; S.hint = { t: 0, msg: 'BREAK ALL 6 GILLS \u2192 STUN' }; }
         const i = S.gillFallback.indexOf('alive');
         if (i >= 0) S.gillFallback[i] = 'dead';
         S.gillFlash = 16;
         break;
       }
       case 'gillRegrow': {
+        if (e.part === 'eye') break;
         S.pendRegrow = (S.pendRegrow || []).concat([{ x: Number(e.x), y: Number(e.y) }]);
         const i = S.gillFallback.indexOf('dead');
         if (i >= 0) S.gillFallback[i] = 'alive';
         break;
       }
       case 'stunStart':
-        S.stun = { t: 0, frames: Math.max(30, Number(e.frames) || 240) };
+        S.stun = { t: 0, frames: Math.max(30, Number(e.frames) || 240), reason: e.reason || 'stun' };
         S.popups.length = 0;
         S.hint = null;
         for (const bn of S.banners) bn.t = Math.max(bn.t, bn.life - 8); // clear the stage for STUN
@@ -283,7 +294,7 @@ export function drawGillHint(ctx, world) {
   if (!S || !S.hint) return;
   const t = S.hint.t;
   const a = t < 8 ? t / 8 : t > 110 ? (130 - t) / 20 : 1;
-  const msg = 'BREAK ALL 6 GILLS → STUN';
+  const msg = S.hint.msg || 'BREAK ALL 6 GILLS → STUN';
   const x = W - 8, y = HUD_H + 24;
   ctx.globalAlpha = a * 0.8;
   ctx.fillStyle = '#0a0410';
@@ -348,7 +359,7 @@ function drawStun(ctx, st) {
     const scale = 1 - 0.7 * m;
     const y = Math.round((1 - m) * 46 + m * (y0 - 9));
     const style = an < 22 && (an >> 2) & 1 ? 'red' : 'hot';
-    drawBig(ctx, 'STUN!', Math.round(W / 2 + (x0 + 15 - W / 2) * m), y, { style, scale: 4, gap: 3, sx: (1.7 - 0.7 * k) * scale, sy: k * scale, alpha: out * (1 - m) });
+    drawBig(ctx, st.reason === 'blinded' ? 'BLINDED!' : 'STUN!', Math.round(W / 2 + (x0 + (st.reason === 'blinded' ? 24 : 15) - W / 2) * m), y, { style, scale: 4, gap: 3, sx: (1.7 - 0.7 * k) * scale, sy: k * scale, alpha: out * (1 - m) });
     if (an < 22) return;
   }
   const pa = clamp((an - 25) / 6, 0, 1) * out;
@@ -358,7 +369,7 @@ function drawStun(ctx, st) {
   ctx.fillStyle = '#ff3a4a';
   ctx.fillRect(x0 - 3, y0 - 11, bw + 6, 1);
   ctx.globalAlpha = 1;
-  drawText(ctx, 'STUN!', x0, y0 - 9, { style: 'red', alpha: pa });
+  drawText(ctx, st.reason === 'blinded' ? 'BLINDED!' : 'STUN!', x0, y0 - 9, { style: 'red', alpha: pa });
   drawText(ctx, 'BREAK CHANCE', x0 + bw, y0 - 9, { style: (an >> 3) & 1 ? 'gold' : 'white', align: 'right', alpha: pa });
   ctx.globalAlpha = pa;
   ctx.fillStyle = '#3a0814';
@@ -440,5 +451,41 @@ function drawGillLinks(ctx, world) {
     const r = 3 + Math.round(L.t / 3);
     ctx.strokeStyle = `rgba(${col},${a.toFixed(2)})`;
     ctx.strokeRect(gx - r + 0.5, gy - r + 0.5, r * 2, r * 2);
+  }
+}
+
+// Zone G: 2-pip EYES tracker under the boss gauge (SCREEN coords), from boss.eyes[i].state.
+export function drawEyeTracker(ctx, world, t) {
+  const b = world.boss;
+  const S = world.hudState && world.hudState.ev;
+  const eyes = b && Array.isArray(b.eyes) ? b.eyes : null;
+  if (!eyes || !eyes.length) return;
+  const n = Math.min(4, eyes.length);
+  const y = HUD_H + 12;
+  const x0 = W - 8 - n * 11;
+  ctx.fillStyle = 'rgba(2,2,10,0.82)';
+  ctx.fillRect(x0 - 34, y - 2, n * 11 + 40, 11);
+  ctx.fillStyle = '#5a2010';
+  ctx.fillRect(x0 - 34, y + 9, n * 11 + 40, 1);
+  const flash = S && S.gillFlash > 0 && (S.gillFlash >> 1) & 1;
+  drawText(ctx, 'EYES', x0 - 30, y, { style: flash ? 'white' : 'red', shadow: false });
+  const regen = (S && S.eyeRegen) || 600;
+  for (let i = 0; i < n; i++) {
+    const e = eyes[i];
+    const x = x0 + i * 11;
+    ctx.fillStyle = '#6a5a70'; ctx.fillRect(x, y, 7, 7);
+    if (e && e.state === 'ok') {
+      ctx.fillStyle = '#3a0808'; ctx.fillRect(x + 1, y + 1, 5, 5);
+      ctx.fillStyle = '#ff3a30'; ctx.fillRect(x + 2, y + 2, 3, 3);
+      ctx.fillStyle = '#ffd0c0'; ctx.fillRect(x + 2, y + 2, 1, 1);
+    } else {
+      // destroyed / rebuilding: dark socket with an X, filling up as it rebuilds
+      ctx.fillStyle = '#120810'; ctx.fillRect(x + 1, y + 1, 5, 5);
+      const k = e && typeof e.t === 'number' ? clamp(e.t / regen, 0, 1) : 0;
+      const h = Math.round(5 * k);
+      if (h > 0) { ctx.fillStyle = k > 0.8 && (t >> 2) & 1 ? '#ffb0a0' : '#8a2a20'; ctx.fillRect(x + 1, y + 6 - h, 5, h); }
+      ctx.fillStyle = '#ff4050';
+      for (let q = 0; q < 5; q++) { ctx.fillRect(x + 1 + q, y + 1 + q, 1, 1); ctx.fillRect(x + 5 - q, y + 1 + q, 1, 1); }
+    }
   }
 }

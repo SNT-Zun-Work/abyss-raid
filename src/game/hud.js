@@ -8,7 +8,8 @@
 import { W, H, HUD_H } from '../config.js';
 import { drawText, bigText } from './ui-font.js';
 import { isTouchUI } from './ui-touch.js';
-import { initEvents, updateEvents, drawGillTracker, drawGillHint } from './ui-events.js';
+import * as scenesMod from './scenes.js'; // circular, runtime only (title zone select)
+import { initEvents, updateEvents, drawGillTracker, drawGillHint, drawEyeTracker } from './ui-events.js';
 import { shipIcon, holeIcon, gaugeFill, weaponIcon } from './ui-art.js';
 
 const num = (...vals) => {
@@ -128,6 +129,7 @@ export function draw(ctx, world) {
     GAUGES.forEach(([k, name, col, hi], i) => drawGauge(ctx, 3 + i * 60, 11, k, name, col, hi, hs.disp[k] ?? 0, hs.glow[k] || 0, hs.blink));
     const bombs = Math.max(0, Math.min(3, L.bombs));
     for (let i = 0; i < bombs; i++) ctx.drawImage(holeIcon(), 112 + i * 9, 2);
+    if ((world.continues | 0) > 0) drawText(ctx, 'CONTINUE ' + Math.min(99, world.continues | 0), 146, 2, { style: 'dim', shadow: false });
   }
 
   // zone box
@@ -139,7 +141,8 @@ export function draw(ctx, world) {
   ctx.fillStyle = '#3a4258';
   ctx.fillRect(zx + 2, zy + zh - 2, zw - 4, 1);
   drawText(ctx, 'ZONE', zx + 8, zy + 6, { style: 'white', shadow: false });
-  const zl = bigText(ZONE_LETTER, { style: 'gold', scale: 2, gap: 1 });
+  const zLetter = String((title && typeof scenesMod.selectedZone === 'function' ? scenesMod.selectedZone(world) : world.zone) || ZONE_LETTER);
+  const zl = bigText(zLetter, { style: zLetter === 'G' ? 'lime' : 'gold', scale: 2, gap: 1 });
   ctx.drawImage(zl, zx + zw - 10 - (zl.width - 2 * zl.pad), zy + 2 - zl.pad);
   ctx.fillStyle = '#ff4a5a';
   ctx.fillRect(zx + 3, zy + 3, 2, zh - 6);
@@ -166,7 +169,9 @@ export function draw(ctx, world) {
     if (gw > 0) ctx.drawImage(gaugeFill(bw, bh), 0, 0, gw, bh, x0, y0, gw, bh);
     if (hs.gauge < 1) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 + Math.round(bw * hs.gauge) - 2, y0 - 1, 2, bh + 2); }
     for (const t of [0.65, 0.3]) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 + Math.round(bw * t), y0 - 2, 1, 1); }
-    if (hs.gauge >= 1) { drawGillTracker(ctx, world, hs.blink); drawGillHint(ctx, world); }
+    if (hs.gauge >= 1 && Array.isArray(world.boss.gills) && world.boss.gills.length) drawGillTracker(ctx, world, hs.blink);
+    else if (hs.gauge >= 1 && Array.isArray(world.boss.eyes) && world.boss.eyes.length) drawEyeTracker(ctx, world, hs.blink);
+    if (hs.gauge >= 1) drawGillHint(ctx, world);
   }
   ctx.imageSmoothingEnabled = prevS;
 }

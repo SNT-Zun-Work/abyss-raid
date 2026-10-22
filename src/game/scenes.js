@@ -10,10 +10,29 @@
 //   clear     ~ 560 (bonus tally, then back to title; START skips once tallied)
 //   gameover  START after 90 f, auto-return after 900 f
 
-import { W, H } from '../config.js';
+import { W, H, HUD_H } from '../config.js';
+import * as touchMod from '../core/touch.js';
 import { clamp, lerp, easeOutCubic } from '../core/util.js';
 import * as audio from './audio.js';
-import * as world_ from './world.js'; // circular, used only at runtime (resetRun)
+import * as world_ from './world.js'; // circular, used only at runtime (resetRun/enterZone/continueRun)
+import * as bossF from './boss.js'; // facade: zoneInfo, ZONE_ORDER (runtime only)
+
+const ZDEF = {
+  V: { letter: 'V', name: 'AMBYSTOMA ROSEA', title: 'GIGANTIC AMPHIBIOUS BATTLESHIP', area: 'ABYSSAL TRENCH' },
+  G: { letter: 'G', name: 'PERIOPHTHALMUS', title: 'AMPHIBIOUS ASSAULT CARRIER', area: 'SUNSET TIDELANDS' },
+};
+export function zinfo(world) {
+  let z = null;
+  try { z = typeof bossF.zoneInfo === 'function' ? bossF.zoneInfo(world) : null; } catch (e) { z = null; }
+  const d = ZDEF[(world && world.zone) || 'V'] || ZDEF.V;
+  return { ...d, ...(z || {}) };
+}
+const zoneOrder = () => (Array.isArray(bossF.ZONE_ORDER) && bossF.ZONE_ORDER.length ? bossF.ZONE_ORDER : ['V', 'G']);
+const article = (t) => (/^[AEIOU]/.test(t) ? 'AN ' : 'A ') + t;
+// title zone select lives in world.titleZone (initialised from world.zone)
+export const selectedZone = (world) => (world && world.titleZone) || (world && world.zone) || 'V';
+export const CONTINUE_LEN = 600; // 9..0, one number per second
+const ALLCLEAR_LEN = 900;
 import { drawText, textWidth, bigText, bigLayout, drawBig } from './ui-font.js';
 import { drawEvents, causeInfo } from './ui-events.js';
 import { isTouchUI, startPrompt } from './ui-touch.js';
@@ -32,6 +51,7 @@ const HI_KEY = 'abyss-axolotl.hi';
 
 export function init(world) {
   world.sceneState = {};
+  world.titleZone = world.zone || 'V';
   if (!HEADLESS) {
     try {
       const v = Number(localStorage.getItem(HI_KEY));
@@ -47,16 +67,19 @@ function saveHi(world) {
 
 // Fresh run: the lead's world.resetRun re-seeds rng/fxRng, clears shots/items and
 // re-inits every gameplay module (hiScore is kept).
-function resetRun(world) {
-  if (typeof world_.resetRun === 'function') world_.resetRun(world);
+function resetRun(world, zone) {
+  if (typeof world_.resetRun === 'function') world_.resetRun(world, zone);
 }
 
 export function goto(world, scene) {
   const prev = world.scene;
-  if ((scene === 'approach' || scene === 'warning') && (prev === 'title' || prev === 'gameover' || prev === 'clear')) resetRun(world);
+  if ((scene === 'approach' || scene === 'warning') && prev === 'title') resetRun(world, world.titleZone || 'V');
   world.scene = scene;
   world.sceneT = 0;
-  world.sceneState = { from: prev, short: scene === 'warning' && prev === 'gameover' };
+  world.sceneState = { from: prev, short: false };
+  // per-zone bookkeeping for the clear tally (deaths / continues during THIS zone)
+  const ev = world.hudState && world.hudState.ev;
+  if (scene === 'warning' && ev) { ev.zoneDeaths0 = ev.deaths | 0; ev.zoneCont0 = world.continues | 0; ev.stats0 = { ...(world.stats || {}) }; }
   world.inputLocked = scene === 'clear';
   if (scene === 'boss' && world.boss) world.boss.active = true;
   if (scene === 'boss' && world.player) world.sceneState.startLives = world.player.lives;
@@ -69,7 +92,7 @@ export function goto(world, scene) {
 }
 
 export function gameplayActive(world) { return GAMEPLAY.has(world.scene); }
-export function showsBoss(world) { return world.scene === 'boss' || world.scene === 'clear'; }
+export function showsBoss(world) { return ['boss', 'clear', 'continue', 'gameover'].includes(world.scene); }
 export function showsPlayer(world) { return world.scene !== 'title'; }
 
 // ---------------------------------------------------------------- update
@@ -81,7 +104,34 @@ export function update(world) {
     case 'title':
       if (bg) bg.speed = 0.4;
       if (t >= 3 && t < 3 + WARM.length) WARM[t - 3]();
-      if (world.input.start && t > 20) { audio.sfx('start'); goto(world, 'warning'); }
+      {
+        // zone select: left/right (edge-triggered); touch: drag left/right
+        const order = zoneOrder();
+        const dx = world.input.x | 0;
+        if (dx !== 0 && ss.prevX !== dx && t > 10) {
+          const i = Math.max(0, order.indexOf(world.titleZone));
+          world.titleZone = order[(i + dx + order.length) % order.length];
+          ss.selT = 0;
+          audio.sfx('tick');
+        }
+        ss.prevX = dx;
+        ss.selT = (ss.selT || 0) + 1;
+        if (!order.includes(world.titleZone)) world.titleZone = order[0];
+      }
+      {
+        // touch: tapping a non-selected zone card only selects it (that tap must not start);
+        // tapping the selected card or anywhere else starts as before.
+        let tap = null;
+        try { tap = typeof touchMod.readTap === 'function' ? touchMod.readTap() : null; } catch (e) { tap = null; }
+        if (tap && t <= 2) tap = null; // drop a stale tap from the previous scene
+        if (tap && Number.isFinite(tap.x) && Number.isFinite(tap.y)) {
+          const py = tap.y - HUD_H;
+          const hit = cardRects().find((r) => tap.x >= r.x - 4 && tap.x < r.x + r.w + 4 && py >= r.y - 4 && py < r.y + r.h + 4);
+          if (hit && hit.z !== world.titleZone) { world.titleZone = hit.z; ss.selT = 0; audio.sfx('tick'); ss.blockStart = 3; }
+        }
+      }
+      if (world.input.start && t > 20 && !(ss.blockStart > 0)) { audio.sfx('start'); goto(world, 'warning'); break; }
+      if (ss.blockStart > 0) ss.blockStart--; // also swallow a start latched a step late
       break;
 
     case 'approach': {
@@ -118,13 +168,13 @@ export function update(world) {
 
     case 'boss': {
       if (bg && t < 60) { bg.darken = 0.55 * (1 - t / 60) * (ss.from === 'warning' ? 1 : 0); bg.tint = 0; }
-      if (t === 30) audio.sfx('bossRoar');
+      if (t === 30 && ss.from !== 'continue') audio.sfx('bossRoar');
       // FINAL FORM mood: persistent pulsing red tint
       if (bg && world.boss && world.boss.phase >= 4) bg.tint = Math.max(bg.tint || 0, 0.22 + 0.08 * Math.sin(t * 0.05));
       // boss dying: lock gameplay input (player module auto-cruises the ship)
       world.inputLocked = !!(world.boss && world.boss.defeated);
       if (world.boss && world.boss.defeated && world.boss.deathDone) goto(world, 'clear');
-      else if (world.player && world.player.lives < 0 && !world.player.alive) goto(world, 'gameover');
+      else if (world.player && world.player.lives < 0 && !world.player.alive && !(world.boss && world.boss.defeated)) goto(world, 'continue');
       break;
     }
 
@@ -133,10 +183,26 @@ export function update(world) {
       updateClear(world, t);
       break;
 
+    case 'continue': {
+      // arcade CONTINUE? 9..0 — START resumes the same fight (boss keeps its state)
+      if (t % 60 === 1 && t < CONTINUE_LEN) audio.sfx('count');
+      if (world.input.start && t > 20) {
+        if (typeof world_.continueRun === 'function') world_.continueRun(world);
+        else if (world.player) { world.player.lives = 2; world.player.alive = false; world.player.respawn = 1; world.score = 0; }
+        audio.sfx('start');
+        goto(world, 'boss');
+        world.sceneState.from = 'continue';
+      } else if (t >= CONTINUE_LEN) goto(world, 'gameover');
+      break;
+    }
+
     case 'gameover':
-      // quick retry: START jumps straight into a shortened WARNING (no title)
-      if (world.input.start && t > 60) goto(world, 'warning');
-      else if (t > 900) goto(world, 'title');
+      if ((world.input.start && t > 90) || t > 720) goto(world, 'title');
+      break;
+
+    case 'allclear':
+      world.inputLocked = true;
+      if ((world.input.start && t > 240) || t > ALLCLEAR_LEN) goto(world, 'title');
       break;
   }
 }
@@ -159,22 +225,33 @@ function clearLines(world) {
   void startLives;
   const fightFrames = world.boss ? Number(world.boss.fightT || world.boss.t) || 0 : 0;
   const ev = world.hudState && world.hudState.ev;
-  const deaths = ev ? ev.deaths | 0 : 0;
+  const deaths = ev ? (ev.deaths | 0) - (ev.zoneDeaths0 | 0) : 0;
+  const conts = Math.max(0, (world.continues | 0) - (ev ? ev.zoneCont0 | 0 : 0));
+  if (world.hudState) {
+    world.hudState.runFrames = (world.hudState.runFrames || 0) + fightFrames;
+    world.hudState.zonesCleared = (world.hudState.zonesCleared || 0) + 1;
+  }
   const secs = Math.floor(fightFrames / 60);
   const clock = `${Math.floor(secs / 60)}'${String(secs % 60).padStart(2, '0')}"`;
   const timeBonus = fightFrames > 0 ? Math.max(0, Math.round((10800 - fightFrames) / 60) * 1000) : 0;
+  // per-zone: world.stats is cumulative across enterZone -> award only this zone's delta
   const st = world.stats || {};
+  const s0 = (ev && ev.stats0) || {};
   const n = (v) => Math.max(0, Math.floor(Number(v) || 0));
-  const wiped = n(st.schoolsWiped), chain = n(st.bestChain), stuns = n(st.stuns);
+  const wiped = n(st.schoolsWiped) - n(s0.schoolsWiped), stuns = n(st.stuns) - n(s0.stuns);
+  // bestChain is a max, not a count: only count it if this zone raised it
+  const chain = n(st.bestChain) > n(s0.bestChain) ? n(st.bestChain) : 0;
+  const noMiss = deaths === 0 && conts === 0;
   ss.lines = [
     { label: 'BOSS DESTROY BONUS', value: 300000 },
-    { label: `SCHOOLS WIPED   ${wiped} x 20000`, value: wiped * 20000 },
-    { label: `BEST CHAIN      ${chain} x 2000`, value: chain * 2000 },
-    { label: `BOSS STUNS      ${stuns} x 50000`, value: stuns * 50000 },
+    wiped > 0 && { label: `SCHOOLS WIPED   ${wiped} x 20000`, value: wiped * 20000 },
+    chain > 0 && { label: `BEST CHAIN      ${chain} x 2000`, value: chain * 2000 },
+    stuns > 0 && { label: `${world.zone === 'G' ? 'BLINDED CRASHES' : 'BOSS STUNS     '} ${stuns} x 50000`, value: stuns * 50000 },
     { label: `REMAINING SHIP  ${lives} x 100000`, value: lives * 100000 },
-    { label: deaths === 0 ? 'DEATHS 0   NO MISS BONUS' : `DEATHS ${deaths}`, value: deaths === 0 ? 200000 : 0 },
+    { label: noMiss ? 'DEATHS 0   NO MISS BONUS' : `DEATHS ${deaths}`, value: noMiss ? 200000 : 0 },
+    conts > 0 && { label: `CONTINUES ${conts}`, value: 0 },
     { label: `TIME ${clock}  SWIFT KILL`, value: timeBonus },
-  ];
+  ].filter(Boolean);
   ss.lines.forEach((l) => { l.shown = 0; });
   return ss.lines;
 }
@@ -199,7 +276,16 @@ function updateClear(world, t) {
     if (world.score > world.hiScore) world.hiScore = world.score;
     saveHi(world);
   }
-  if ((done && world.input.start) || t >= CLEAR_LEN) goto(world, 'title');
+  if ((done && world.input.start) || t >= CLEAR_LEN) {
+    // boss rush: next zone keeps score/lives/power; after the last zone -> ALL CLEAR
+    const order = zoneOrder();
+    const i = order.indexOf(world.zone || 'V');
+    const next = i >= 0 ? order[i + 1] : null;
+    if (next && typeof world_.enterZone === 'function') {
+      world_.enterZone(world, next);
+      goto(world, 'warning');
+    } else goto(world, 'allclear');
+  }
 }
 
 // ---------------------------------------------------------------- drawing
@@ -214,6 +300,8 @@ export function draw(ctx, world) {
     case 'boss': drawEvents(ctx, world); drawBossIntro(ctx, world); break;
     case 'clear': drawEvents(ctx, world); drawClear(ctx, world); break;
     case 'gameover': drawGameOver(ctx, world); break;
+    case 'continue': drawContinue(ctx, world); break;
+    case 'allclear': drawAllClear(ctx, world); break;
   }
   ctx.restore();
   ctx.imageSmoothingEnabled = prevS;
@@ -331,13 +419,52 @@ function drawTouchControls(ctx, px0, y, alpha) {
   const rows = [
     ['DRAG ANYWHERE', 'MOVE (AUTO-FIRE)', 'cyan'],
     ['BURST', 'ABYSS BURST  (ON-SCREEN BUTTON)', 'pink'],
-    ['TAP', 'START', 'white'],
+    ['TAP', 'START  /  TAP A ZONE CARD TO PICK', 'white'],
     ['FULL', 'FULLSCREEN', 'grey'],
   ];
   rows.forEach(([k, label, style], i) => {
     const r = y + 4 + i * 13;
     const x = cap(ctx, lx, r, k, alpha);
     drawText(ctx, label, x + 4, r + 2, { style, alpha });
+  });
+}
+
+// zone card layout (playfield coords), shared by drawing and tap hit-testing
+const CARD_Y = 80, CARD_W = 128, CARD_H = 19, CARD_GAP = 12;
+function cardRects() {
+  const order = zoneOrder();
+  const total = order.length * CARD_W + (order.length - 1) * CARD_GAP;
+  const x0 = Math.round(W / 2 - total / 2);
+  return order.map((z, i) => ({ z, x: x0 + i * (CARD_W + CARD_GAP), y: CARD_Y, w: CARD_W, h: CARD_H }));
+}
+
+// two zone cards; the selected one is lit with blinking arrows
+function drawZoneSelect(ctx, world, y, alpha) {
+  const order = zoneOrder();
+  const cw = CARD_W, ch = CARD_H, gap = CARD_GAP;
+  const total = order.length * cw + (order.length - 1) * gap;
+  const x0 = Math.round(W / 2 - total / 2);
+  const t = world.sceneT;
+  order.forEach((z, i) => {
+    const d = ZDEF[z] || { letter: z, area: '' };
+    const x = x0 + i * (cw + gap);
+    const sel = z === selectedZone(world);
+    ctx.globalAlpha = alpha * (sel ? 0.95 : 0.85);
+    ctx.fillStyle = sel ? 'rgba(46,24,6,0.92)' : 'rgba(8,14,30,0.85)';
+    ctx.fillRect(x, y, cw, ch);
+    ctx.fillStyle = sel ? '#ffd040' : '#6a7a98';
+    ctx.fillRect(x, y, cw, 1); ctx.fillRect(x, y + ch - 1, cw, 1); ctx.fillRect(x, y, 1, ch); ctx.fillRect(x + cw - 1, y, 1, ch);
+    ctx.globalAlpha = 1;
+    const zt = bigText(z, { style: sel ? zoneStyle(z) : 'steel', scale: 2, gap: 1 });
+    ctx.globalAlpha = alpha * (sel ? 1 : 0.85);
+    ctx.drawImage(zt, x + 5 - zt.pad, y + 3 - zt.pad);
+    ctx.globalAlpha = 1;
+    drawText(ctx, 'ZONE ' + z, x + 22, y + 2, { style: sel ? 'gold' : 'grey', alpha });
+    drawText(ctx, d.area, x + 22, y + 10, { style: sel ? 'white' : 'grey', alpha });
+    if (sel && (t >> 4) & 1) {
+      drawText(ctx, '←', x - 9, y + 6, { style: 'gold', alpha });
+      drawText(ctx, '→', x + cw + 3, y + 6, { style: 'gold', alpha });
+    }
   });
 }
 
@@ -367,13 +494,13 @@ function drawTitle(ctx, world) {
     ctx.fillStyle = '#5a1838';
     ctx.fillRect(W / 2 - half, 59, half * 2, 1);
     drawBig(ctx, 'AXOLOTL', W / 2, 64, { style: 'pink', scale: 2, gap: 5, alpha: k });
-    drawText(ctx, 'ZONE V  -  ABYSSAL TRENCH', W / 2, 83, { style: 'grey', align: 'center', alpha: k });
+    drawZoneSelect(ctx, world, CARD_Y, k);
   }
   if (t >= 70) {
-    if (((t - 70) % 60) < 40) drawBig(ctx, startPrompt(), W / 2, 97, { style: 'gold', scale: 1, gap: 2 });
-    drawControls(ctx, 112, clamp((t - 70) / 16, 0, 1));
+    if (((t - 70) % 60) < 40) drawBig(ctx, startPrompt(), W / 2, 104, { style: 'gold', scale: 1, gap: 2 });
+    drawControls(ctx, 117, clamp((t - 70) / 16, 0, 1));
   }
-  drawText(ctx, '© 2026 ABYSSAL WORKS  ORIGINAL ARCADE', W / 2, 182, { style: 'cyan', align: 'center' });
+  drawText(ctx, '© 2026 ABYSSAL WORKS  ORIGINAL ARCADE', W / 2, 186, { style: 'cyan', align: 'center' });
   if (!isTouchUI()) drawText(ctx, 'FREE PLAY', W - 6, H - 10, { style: 'white', align: 'right' }); // touch: BURST button sits there
   if (!isTouchUI()) drawText(ctx, 'BOSS ATTACK MODE', 6, H - 10, { style: 'dim' }); // touch: corner buttons
 }
@@ -413,8 +540,7 @@ function drawApproach(ctx, world) {
 }
 
 // --- warning
-const WARN_L1 = 'A GIGANTIC AMPHIBIOUS BATTLESHIP';
-const WARN_L2 = 'AMBYSTOMA ROSEA';
+const WARN_L2 = 'AMBYSTOMA ROSEA'; // (zone V; used for sprite warm-up)
 const WARN_L3 = 'IS APPROACHING FAST';
 function drawBand(ctx, y, h, t, dir, slide) {
   const ox = Math.round(slide * W * dir);
@@ -435,6 +561,10 @@ function drawBand(ctx, y, h, t, dir, slide) {
 
 function drawWarning(ctx, world) {
   const t = world.sceneT, L = warnLen(world);
+  const Z = zinfo(world);
+  const WARN_L1 = article(Z.title);
+  const WARN_L2 = Z.name;
+  const zoneV = Z.letter === 'V';
   const short = L === WARNING_SHORT;
   // red alarm pulse over the whole screen
   const pulse = 0.5 + 0.5 * Math.sin(t * 0.2);
@@ -479,8 +609,13 @@ function drawWarning(ctx, world) {
     }
   }
   // schematic box with scanning line
-  if (short && t >= 24 && t < L - 12) drawText(ctx, 'RETRY  -  GOOD LUCK!', W / 2, 92, { style: 'gold', align: 'center' });
-  if (t >= 100 && t < L - 20) {
+  if (!zoneV && t >= 100 && t < L - 20) {
+    // non-axolotl zones: zone banner instead of the axolotl schematic
+    const k = easeOutCubic(clamp((t - 100) / 12, 0, 1));
+    drawBig(ctx, 'ZONE ' + Z.letter, W / 2, 134, { style: zoneStyle(Z.letter), scale: 2, gap: 3, sx: k, alpha: t > L - 30 ? (L - 20 - t) / 10 : 1 });
+    drawText(ctx, typed(Z.area || '', t, 112, 2), W / 2 - textWidth(Z.area || '') / 2, 156, { style: 'gold' });
+  }
+  if (zoneV && t >= 100 && t < L - 20) {
     const on = t < 108 ? (t & 2) === 0 : true;
     if (on) {
       const sx = Math.round(W / 2 - SCHEM_W / 2), sy = 128;
@@ -499,12 +634,13 @@ function drawWarning(ctx, world) {
 // --- boss name plate
 function drawBossIntro(ctx, world) {
   const t = world.sceneT;
-  if (t < 36 || t > 260) return;
+  if (t < 36 || t > 260 || world.sceneState.from === 'continue') return;
+  const Z = zinfo(world);
   const k = easeOutCubic(clamp((t - 36) / 18, 0, 1));
   const out = t > 230 ? (260 - t) / 30 : 1;
-  const nm = bigText('AMBYSTOMA ROSEA', { style: 'pink', scale: 2, gap: 2 });
+  const nm = bigText(Z.name, { style: Z.letter === 'V' ? 'pink' : 'gold', scale: 2, gap: 2 });
   const y = H - 50;
-  const w = Math.max(nm.width, textWidth('GIGANTIC AMPHIBIOUS BATTLESHIP')) + 14;
+  const w = Math.max(nm.width, textWidth(Z.title)) + 14;
   const x = Math.round(W - 8 - w * k);
   ctx.globalAlpha = out;
   ctx.fillStyle = 'rgba(16,2,14,0.72)';
@@ -515,7 +651,7 @@ function drawBossIntro(ctx, world) {
   ctx.fillStyle = '#5a1838';
   ctx.fillRect(x, y + 31, w, 1);
   ctx.globalAlpha = 1;
-  drawText(ctx, 'GIGANTIC AMPHIBIOUS BATTLESHIP', x + 7, y + 4, { style: 'grey', alpha: out });
+  drawText(ctx, Z.title, x + 7, y + 4, { style: 'grey', alpha: out });
   ctx.globalAlpha = out;
   ctx.drawImage(nm, x + 7 - nm.pad, y + 14 - nm.pad);
   ctx.globalAlpha = 1;
@@ -577,5 +713,56 @@ function drawGameOver(ctx, world) {
       drawText(ctx, String(d.hint || info.hint).slice(0, 60), W / 2, 141, { style: 'green', align: 'center' });
     } else drawText(ctx, 'THE ABYSS AWAITS YOUR RETURN', W / 2, 132, { style: 'dim', align: 'center' });
   }
-  if (t >= 60 && (t % 60) < 40) drawBig(ctx, isTouchUI() ? 'TRY AGAIN!  TAP TO START' : 'TRY AGAIN!  PUSH START', W / 2, 160, { style: 'gold', scale: 1, gap: 2 });
+  if (t >= 90 && (t % 60) < 40) drawText(ctx, isTouchUI() ? 'TAP TO RETURN TO TITLE' : 'PUSH START', W / 2, 166, { style: 'white', align: 'center' });
 }
+
+// --- continue countdown
+function drawContinue(ctx, world) {
+  const t = world.sceneT;
+  shade(ctx, clamp(t / 20, 0, 1) * 0.55);
+  const n = Math.max(0, 9 - Math.floor(t / 60));
+  const ph = (t % 60) / 60;
+  drawBig(ctx, 'CONTINUE?', W / 2, 52, { style: (t >> 4) & 1 ? 'gold' : 'hot', scale: 3, gap: 2 });
+  const sc = 1 + 0.5 * Math.max(0, 1 - ph * 5);
+  drawBig(ctx, String(n), W / 2, 92, { style: n <= 3 ? 'red' : 'steel', scale: 4, gap: 2, sx: sc, sy: sc, alpha: 1 - Math.max(0, ph - 0.85) * 4 });
+  if ((t % 50) < 36) drawText(ctx, isTouchUI() ? 'TAP TO CONTINUE' : 'PUSH START TO CONTINUE', W / 2, 136, { style: 'white', align: 'center' });
+  drawText(ctx, 'FREE PLAY - THE FIGHT RESUMES WHERE YOU FELL', W / 2, 148, { style: 'dim', align: 'center' });
+  const d = world.hudState && world.hudState.ev && world.hudState.ev.lastDeath;
+  if (d) {
+    drawText(ctx, 'HIT BY: ' + d.name, W / 2, 166, { style: 'red', align: 'center' });
+    drawText(ctx, String(d.hint || '').slice(0, 64), W / 2, 177, { style: 'green', align: 'center' });
+  }
+  if (world.continues > 0) drawText(ctx, `CONTINUES USED ${world.continues}`, W / 2, 196, { style: 'grey', align: 'center' });
+}
+
+// --- all clear / ending
+function drawAllClear(ctx, world) {
+  const t = world.sceneT;
+  shade(ctx, clamp(t / 60, 0, 1) * 0.6);
+  ctx.drawImage(vignette(), 0, 0);
+  const k = easeOutCubic(clamp((t - 10) / 20, 0, 1));
+  if (t >= 10) drawBig(ctx, 'ALL CLEAR', W / 2, 30, { style: t < 40 && (t >> 2) & 1 ? 'hot' : 'gold', scale: 4, gap: 3, sx: k });
+  if (t >= 50) drawBig(ctx, 'CONGRATULATIONS!', W / 2, 66, { style: 'pink', scale: 2, gap: 2, alpha: clamp((t - 50) / 20, 0, 1) });
+  const hs = world.hudState || {};
+  const secs = Math.floor((hs.runFrames || 0) / 60);
+  const rows = [
+    ['ZONES CLEARED', String(hs.zonesCleared || zoneOrder().length)],
+    ['TOTAL TIME', `${Math.floor(secs / 60)}'${String(secs % 60).padStart(2, '0')}"`],
+    ['CONTINUES', String(world.continues | 0)],
+    ['TOTAL SCORE', String(world.score).padStart(8, '0')],
+  ];
+  rows.forEach(([a, b], i) => {
+    if (t < 90 + i * 24) return;
+    const y = 96 + i * 14;
+    drawText(ctx, a, W / 2 - 100, y, { style: i === 3 ? 'cyan' : 'white' });
+    drawText(ctx, b, W / 2 + 100, y, { style: 'gold', align: 'right' });
+  });
+  if (t >= 200) {
+    const msg = world.continues > 0 ? 'NEXT TIME, TRY IT WITHOUT CONTINUES!' : 'A FLAWLESS RAID. THE ABYSS IS QUIET AGAIN.';
+    drawText(ctx, msg, W / 2, 162, { style: 'green', align: 'center' });
+    drawText(ctx, 'THANK YOU FOR PLAYING', W / 2, 178, { style: 'pink', align: 'center' });
+  }
+  if (t >= 240 && (t % 60) < 40) drawText(ctx, startPrompt(), W / 2, 196, { style: 'white', align: 'center' });
+}
+
+export function zoneStyle(letter) { return letter === 'G' ? 'lime' : 'cyan'; }

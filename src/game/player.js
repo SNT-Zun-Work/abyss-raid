@@ -25,6 +25,8 @@ import {
 
 export const SHIELD_MAX = 8;
 export const START = { laserLv: 1, waveLv: 0, homingLv: 0, shieldHp: 0, burstStock: 1 };
+// a run that starts directly at zone G gets a mid kit
+export const START_G = { laserLv: 3, waveLv: 1, homingLv: 0, shieldHp: 2, burstStock: 1 };
 export const ITEM_KINDS = ['laser', 'wave', 'homing', 'shield', 'bomb'];
 const LEGACY = { red: 'laser', missile: 'laser', green: 'wave', bomb: 'bomb', blue: 'homing', cyan: 'shield', arm: 'shield' };
 const SPEED = 2, DIAG = 1.5;
@@ -40,7 +42,7 @@ export function init(world) {
   world.player = {
     x: -30, y: H / 2, alive: true, lives: 2, invuln: 0, respawn: 0, entering: 0, parked: true,
     bank: 0, cool: 0, waveCool: 0, homingCool: 0, homingSide: 1, muzzle: 0, volley: 0,
-    ...START,
+    ...(world.zone === 'G' ? START_G : START),
     laserMax: LASER_MAX, waveMax: WAVE_MAX, homingMax: HOMING_MAX, shieldMax: SHIELD_MAX, burstMax: BURST_MAX,
     shieldFlash: 0, shieldGrace: 0, itemsCollected: 0, kvx: 0, kvy: 0, pops: [], impacts: [], burst: null, t: 0, collectFx: null, sceneSeen: null, lastItem: null, lastDeath: null,
   };
@@ -215,6 +217,35 @@ function updateItems(world) {
 }
 
 // ---------------------------------------------------------------- update
+// ---------------------------------------------------------------- run flow hooks (world.js)
+function clearTransient(world) {
+  const p = world.player;
+  if (world.pShots) world.pShots.length = 0; else world.pShots = [];
+  if (world.items) world.items.length = 0; else world.items = [];
+  Object.assign(p, { burst: null, pops: [], impacts: [], collectFx: null, kvx: 0, kvy: 0, shieldGrace: 0, shieldFlash: 0, cinematic: false });
+}
+
+// Arcade continue: fresh stock, fly in now, fair kit (wave/homing kept).
+export function onContinue(world) {
+  const p = world.player;
+  clearTransient(world);
+  p.lives = 2;
+  p.laserLv = Math.max(p.laserLv, 3);
+  p.shieldHp = Math.min(SHIELD_MAX, Math.max(p.shieldHp, 2));
+  p.burstStock = Math.max(p.burstStock, 1);
+  startEntry(p);
+  p.invuln = INVULN;
+  p.sceneSeen = world.scene;
+}
+
+// Next zone of the boss rush: keep power/lives/score/itemsCollected; park off-screen
+// and fly in when the next boss scene starts (or right away if already in it).
+export function enterZone(world) {
+  const p = world.player;
+  clearTransient(world);
+  Object.assign(p, { parked: true, x: -30, y: H / 2, entering: 0, bank: 0, invuln: 0, alive: true, respawn: 0, sceneSeen: null });
+}
+
 function startEntry(p) {
   Object.assign(p, { alive: true, parked: false, x: -24, y: H / 2, entering: ENTER_FRAMES, bank: 0, cool: 10, waveCool: 10, homingCool: 20 });
 }

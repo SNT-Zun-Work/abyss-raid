@@ -12,7 +12,7 @@ import { easeInOutSine, clamp } from '../core/util.js';
 import * as bullets from './bullets.js';
 import * as player from './player.js';
 import { child, sfx, aimAt, aimLead, hurtPlayer, fxCall } from './boss-util.js';
-import { heat, DIFFICULTY } from './boss.js';
+import { heat, DIFFICULTY } from './boss-axolotl.js';
 import { TAIL } from './boss-parts.js';
 const TAILR = TAIL.r;
 

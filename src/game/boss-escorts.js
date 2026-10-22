@@ -17,7 +17,7 @@ import { W, H } from '../config.js';
 import * as bullets from './bullets.js';
 import { FRY_DIRS } from './boss-parts.js';
 import { sfx, fxCall, aimAt } from './boss-util.js';
-import { dropItem, DIFFICULTY } from './boss.js';
+import { dropItem, DIFFICULTY } from './boss-axolotl.js';
 import { STRONG, BIG } from './boss-attacks.js';
 import { emit } from './world.js';
 

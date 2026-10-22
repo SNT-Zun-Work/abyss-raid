@@ -23,6 +23,10 @@ import { makeSprite } from '../core/util.js';
 import { hash } from './bg-noise.js';
 import { getArt, M, BW, BH, TW, RAY_W } from './bg-art.js';
 import { initMood, updateMood, drawAlarm, drawFar, drawNear, gradeMood, rasterAmp, lightPulse } from './bg-mood.js';
+import * as zoneG from './bg-g.js';
+
+// Zone dispatch: 'G' = SUNSET TIDELANDS (bg-g.js); anything else = the V cavern below.
+const isG = (world) => world && world.zone === 'G';
 
 const PAR = { ray: 0.03, skyline: 0.03, far: 0.06, farCeil: 0.12, mid: 0.2, near: 0.38, ceil: 0.55, front: 0.8, specks: 1 };
 
@@ -37,6 +41,7 @@ function ensureBuffers() {
 const mod = (a, n) => ((a % n) + n) % n;
 
 export function init(world) {
+  if (isG(world)) return zoneG.init(world);
   getArt();
   ensureBuffers();
   world.bg = { scroll: 0, speed: 0.4, t: 0, tint: 0, darken: 0 };
@@ -44,6 +49,7 @@ export function init(world) {
 }
 
 export function update(world) {
+  if (isG(world)) return zoneG.update(world);
   const b = world.bg;
   b.scroll += b.speed || 0;
   b.t++;
@@ -79,6 +85,7 @@ const RAYS = [
 ];
 
 export function drawBack(ctx, world) {
+  if (isG(world)) return zoneG.drawBack(ctx, world);
   const A = getArt();
   ensureBuffers();
   const bg = world.bg;
@@ -180,6 +187,7 @@ const BUBS = [];
 for (let i = 0; i < 10; i++) BUBS.push({ x: hash(i, 5, 10) * (W + 20), y: hash(i, 6, 10) * (H + 40), v: 0.3 + hash(i, 7, 10) * 0.45, sz: hash(i, 8, 10) < 0.6 ? 0 : 1, ph: hash(i, 9, 10) * 6.28 });
 
 export function drawMid(ctx, world) {
+  if (isG(world)) return zoneG.drawMid(ctx, world);
   const A = getArt();
   const { scroll: s, t } = world.bg;
   for (let tier = 0; tier < 3; tier++) {
@@ -223,6 +231,7 @@ const FRONT = [
 ];
 
 export function drawFront(ctx, world) {
+  if (isG(world)) return zoneG.drawFront(ctx, world);
   const A = getArt();
   const { scroll: s, t } = world.bg;
   const smooth = ctx.imageSmoothingEnabled;

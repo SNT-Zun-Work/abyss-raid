@@ -128,6 +128,15 @@ export function botInput(world, profileName = 'perfect') {
         const d2 = (sx - x) ** 2 + (sy - y) ** 2;
         if (d2 < rr * rr * 4) danger += wgt * (rr * rr * 4 - d2);
       }
+      // Boss-owned projectiles outside world.eShots (e.g. ZONE G gravity mud lobs):
+      // {x, y, vx, vy, r, g?} extrapolated with gravity; the human profile sees them late too.
+      if (b && b.hazards) for (const hz of b.hazards) {
+        const tt = t + D * (prof.lagComp - 1);
+        const hx = hz.x + (hz.vx || 0) * tt, hy = hz.y + (hz.vy || 0) * tt + 0.5 * (hz.g || 0) * tt * tt;
+        const rr = (hz.r || 4) + 5;
+        const d2 = (hx - x) ** 2 + (hy - y) ** 2;
+        if (d2 < rr * rr * 4) danger += wgt * (rr * rr * 4 - d2);
+      }
       if (b && b.circles) for (const c of b.circles) {
         const rr = c.r + 10;
         if ((c.x - x) ** 2 + (c.y - y) ** 2 < rr * rr) danger += wgt * 400;

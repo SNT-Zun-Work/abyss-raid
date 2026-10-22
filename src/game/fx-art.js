@@ -61,9 +61,9 @@ function fireSheet(R, frames, seed, shape = 'round') {
 }
 
 // smoke puff: blue-grey, expands and dissolves (drawn behind the player).
-function smokeSheet() {
+function smokeSheet(rpIn) {
   const S = 16, frames = 8, c = S / 2;
-  const rp = ramp('#122236', '#1a2e44', '#243c54', '#304c66', '#40607a');
+  const rp = rpIn || ramp('#122236', '#1a2e44', '#243c54', '#304c66', '#40607a');
   const sheet = makeSprite(S * frames, S, () => {});
   const sctx = sheet.getContext('2d');
   for (let f = 0; f < frames; f++) {
@@ -215,6 +215,7 @@ export function getFxArt() {
       [fireSheet(46, 16, 19), fireSheet(46, 16, 21, 'lobed')],
     ],
     smoke: smokeSheet(),
+    mud: smokeSheet(ramp('#1e140e', '#2c1e14', '#3c2a1c', '#4e3826', '#644a32')),
     flash: flashSprites(),
     glow: glowSprite(40),
     bubbles: makeBubbles(),

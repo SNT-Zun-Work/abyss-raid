@@ -14,7 +14,13 @@ import { createEngine, VOICES, SFX, duckMusic, unduckMusic } from './audio-synth
 import { SONGS } from './audio-songs.js';
 
 const LOOKAHEAD = 0.2;
-const SCENE_SONG = { title: 'title', approach: 'approach', warning: null, boss: 'boss', clear: 'victory', gameover: 'gameover' };
+const SCENE_SONG = { title: 'title', approach: 'approach', warning: null, boss: 'boss', clear: 'victory', gameover: 'gameover', continue: null, allclear: 'victory' };
+// boss music per zone: [normal, final form]
+const ZONE_SONGS = { V: ['boss', 'final'], G: ['mud', 'mudFinal'] };
+const zoneSong = (world, final) => {
+  const z = ZONE_SONGS[(world && world.zone) || 'V'] || ZONE_SONGS.V;
+  return z[final ? 1 : 0];
+};
 
 let ctx = null;
 let E = null;
@@ -150,7 +156,10 @@ export function sfx(name, arg) {
 }
 
 export function onScene(world, scene) {
-  const name = Object.prototype.hasOwnProperty.call(SCENE_SONG, scene) ? SCENE_SONG[scene] : null;
+  if (scene === 'continue') return; // keep the fight music under the countdown
+  let name = Object.prototype.hasOwnProperty.call(SCENE_SONG, scene) ? SCENE_SONG[scene] : null;
+  if (scene === 'boss') name = zoneSong(world, world && world.boss && world.boss.phase >= 4);
+  if (scene === 'boss' && name === wantSong && player && !player.done) return; // continue: keep the fight music running
   wantSong = name;
   if (E) {
     try { unduckMusic(E, ctx.currentTime); } catch (e) { /* ignore */ }
@@ -180,7 +189,7 @@ function handleEvents(world) {
           if (e.big) sfx(/giga/i.test(String(e.cause || '') + String(e.name || '')) ? 'gigaCharge' : 'riser');
           break;
         case 'phaseChange':
-          if (Number(e.to) === 4) { sfx('bossRoar'); playSong('final'); }
+          if (Number(e.to) === 4) { sfx('bossRoar'); playSong(zoneSong(world, true)); }
           break;
         case 'playerDeath': break; // 'death' sfx is fired by the player module
       }

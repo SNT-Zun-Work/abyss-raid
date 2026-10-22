@@ -123,6 +123,7 @@ export function attachTouch() {
     e.preventDefault();
     state.startLatch = true;
     state.lastTouchT = performance.now();
+    recordTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
     if (state.moveId === null) {
       const t = e.changedTouches[0];
       state.moveId = t.identifier;
@@ -175,7 +176,24 @@ export function readTouch() {
   return out;
 }
 
+// Last tap position in SCREEN game coordinates (0..W, 0..SCREEN_H; the HUD band is
+// y < HUD_H), or null. Consumed on read. For UI hit-testing (e.g. title zone cards).
+let lastTap = null;
+export function readTap() {
+  const t = lastTap;
+  lastTap = null;
+  return t;
+}
+function recordTap(clientX, clientY) {
+  const c = document.getElementById('screen');
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return;
+  lastTap = { x: (clientX - r.left) / state.scale, y: (clientY - r.top) / state.scale };
+}
+
 export function resetTouch() {
+  lastTap = null;
   state.dx = state.dy = 0;
   state.burstLatch = state.startLatch = false;
   state.moveId = null;

@@ -24,7 +24,11 @@ export const SHOTS = [
   { id: 'boss-p3', scene: 'boss', frames: 400, bot: true, bossHpFrac: 0.25, expect: { scene: 'boss', phase: 3 } },
   { id: 'boss-p4', scene: 'boss', frames: 420, bot: true, bossHpFrac: 0.1, expect: { scene: 'boss', phase: 4 } },
   { id: 'boss-death',scene: 'boss', frames: 90, bossHpFrac: 0, bot: true, expect: { defeated: true } },
-  { id: 'clear', scene: 'clear', frames: 120, expect: { scene: 'clear' } },
+  { id: 'g-warning', zone: 'G', scene: 'warning', frames: 200, expect: { scene: 'warning' } },
+  { id: 'g-boss-entry', zone: 'G', scene: 'boss', frames: 120, expect: { scene: 'boss' } },
+  { id: 'g-boss-p1', zone: 'G', scene: 'boss', frames: 600, bot: true, expect: { scene: 'boss' } },
+  { id: 'g-boss-late', zone: 'G', scene: 'boss', frames: 400, bot: true, bossHpFrac: 0.2, expect: { scene: 'boss' } },
+  { id: 'clear',scene: 'clear', frames: 120, expect: { scene: 'clear' } },
 ];
 
 export const CAPTURE = { width: W * 3, height: SCREEN_H * 3 };

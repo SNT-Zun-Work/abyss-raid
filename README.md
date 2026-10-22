@@ -13,4 +13,4 @@ generated in code; no assets from any commercial game are used.
 | Abyss Burst | H | BURST button |
 | Mute | M | — |
 
-Version: v0.5.1
+Version: v0.6
