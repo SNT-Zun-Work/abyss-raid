@@ -9,7 +9,7 @@ import { W, H, HUD_H } from '../config.js';
 import { drawText, bigText } from './ui-font.js';
 import { isTouchUI } from './ui-touch.js';
 import * as scenesMod from './scenes.js'; // circular, runtime only (title zone select)
-import { initEvents, updateEvents, drawGillTracker, drawGillHint, drawEyeTracker } from './ui-events.js';
+import { initEvents, updateEvents, drawGillTracker, drawGillHint, drawEyeTracker, drawPartTracker } from './ui-events.js';
 import { shipIcon, holeIcon, gaugeFill, weaponIcon } from './ui-art.js';
 
 const num = (...vals) => {
@@ -169,7 +169,8 @@ export function draw(ctx, world) {
     if (gw > 0) ctx.drawImage(gaugeFill(bw, bh), 0, 0, gw, bh, x0, y0, gw, bh);
     if (hs.gauge < 1) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 + Math.round(bw * hs.gauge) - 2, y0 - 1, 2, bh + 2); }
     for (const t of [0.65, 0.3]) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 + Math.round(bw * t), y0 - 2, 1, 1); }
-    if (hs.gauge >= 1 && Array.isArray(world.boss.gills) && world.boss.gills.length) drawGillTracker(ctx, world, hs.blink);
+    if (hs.gauge >= 1 && (Array.isArray(world.boss.sails) || Array.isArray(world.boss.fins))) drawPartTracker(ctx, world, hs.blink);
+    else if (hs.gauge >= 1 && Array.isArray(world.boss.gills) && world.boss.gills.length) drawGillTracker(ctx, world, hs.blink);
     else if (hs.gauge >= 1 && Array.isArray(world.boss.eyes) && world.boss.eyes.length) drawEyeTracker(ctx, world, hs.blink);
     if (hs.gauge >= 1) drawGillHint(ctx, world);
   }

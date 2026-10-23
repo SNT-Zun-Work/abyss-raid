@@ -5,7 +5,7 @@
 //
 // Timings (60 Hz frames):
 //   approach  240  (4.0 s)  ship flies in, bg.speed eases 7 ->1, zone banner
-//   warning   330  (5.5 s)  alarm bands, WARNING!!, typed boss intro, schematic
+//   warning   330  (5.5 s)  alert slam, painted sonar acquisition, target-name slam
 //   boss      until boss.defeated && boss.deathDone (or lives < 0 ->gameover)
 //   clear     ~ 560 (bonus tally, then back to title; START skips once tallied)
 //   gameover  START after 90 f, auto-return after 900 f
@@ -20,7 +20,9 @@ import * as bossF from './boss.js'; // facade: zoneInfo, ZONE_ORDER (runtime onl
 const ZDEF = {
   V: { letter: 'V', name: 'AMBYSTOMA ROSEA', title: 'GIGANTIC AMPHIBIOUS BATTLESHIP', area: 'ABYSSAL TRENCH' },
   G: { letter: 'G', name: 'PERIOPHTHALMUS', title: 'AMPHIBIOUS ASSAULT CARRIER', area: 'SUNSET TIDELANDS' },
+  M: { letter: 'M', name: 'PERIOPHTHALMUS REX', title: 'AMPHIBIOUS SIEGE BEHEMOTH', area: 'MUDFLAT FRONT' },
 };
+const CARD_AREA = { V: 'CAVERN', G: 'TIDELANDS', M: 'MUDFLAT' };
 export function zinfo(world) {
   let z = null;
   try { z = typeof bossF.zoneInfo === 'function' ? bossF.zoneInfo(world) : null; } catch (e) { z = null; }
@@ -28,15 +30,16 @@ export function zinfo(world) {
   return { ...d, ...(z || {}) };
 }
 const zoneOrder = () => (Array.isArray(bossF.ZONE_ORDER) && bossF.ZONE_ORDER.length ? bossF.ZONE_ORDER : ['V', 'G']);
-const article = (t) => (/^[AEIOU]/.test(t) ? 'AN ' : 'A ') + t;
 // title zone select lives in world.titleZone (initialised from world.zone)
 export const selectedZone = (world) => (world && world.titleZone) || (world && world.zone) || 'V';
 export const CONTINUE_LEN = 600; // 9..0, one number per second
 const ALLCLEAR_LEN = 900;
 import { drawText, textWidth, bigText, bigLayout, drawBig } from './ui-font.js';
 import { drawEvents, causeInfo } from './ui-events.js';
+import { drawKeyArt } from './ui-presentation-visual.js';
+import { drawWarningVisual } from './ui-warning-visual.js';
 import { isTouchUI, startPrompt } from './ui-touch.js';
-import { vignette, hazard, HAZ_P, alarmBand, schematic, SCHEM_W, SCHEM_H, titleSilhouette, TITLE_SIL_EYE, keyCap } from './ui-art.js';
+import { vignette, keyCap } from './ui-art.js';
 
 export const APPROACH_LEN = 240;
 export const WARNING_LEN = 330;
@@ -161,7 +164,7 @@ export function update(world) {
         bg.tint = (0.35 + 0.4 * pulse) * clamp(k, 0, 1);
         bg.speed = 1;
       }
-      if (t === 1) audio.sfx(ss.short ? 'warningShort' : 'warning');
+      if (t === 1) audio.sfx(ss.short ? 'warningShort' : 'warning', world.zone);
       if (t >= warnLen(world)) goto(world, 'boss');
       break;
     }
@@ -209,10 +212,10 @@ export function update(world) {
 
 // Pre-build sprites used by later scenes while the title idles (avoids a hitch on START).
 const WARM = [
-  () => { alarmBand(22); hazard(5); schematic(); },
-  () => { bigText('WARNING!!', { style: 'red', scale: 4, gap: 3 }); },
-  () => { bigText('WARNING!!', { style: 'hot', scale: 4, gap: 3 }); },
-  () => { bigText(WARN_L2, { style: 'pink', scale: 2, gap: 2 }); bigText('AMBYSTOMA ROSEA', { style: 'pink', scale: 2, gap: 2 }); },
+  () => { bigText('WARNING', { style: 'red', scale: 4, gap: 5 }); },
+  () => { bigText('WARNING', { style: 'gold', scale: 4, gap: 5 }); },
+  () => { bigText('WARNING', { style: 'cyan', scale: 4, gap: 5 }); },
+  () => { bigText('PERIOPHTHALMUS', { style: 'gold', scale: 2, gap: 2 }); bigText('AMBYSTOMA ROSEA', { style: 'pink', scale: 2, gap: 2 }); },
   () => { bigText('ZONE CLEAR', { style: 'gold', scale: 3, gap: 2 }); bigText('ZONE CLEAR', { style: 'hot', scale: 3, gap: 2 }); },
 ];
 
@@ -246,7 +249,7 @@ function clearLines(world) {
     { label: 'BOSS DESTROY BONUS', value: 300000 },
     wiped > 0 && { label: `SCHOOLS WIPED   ${wiped} x 20000`, value: wiped * 20000 },
     chain > 0 && { label: `BEST CHAIN      ${chain} x 2000`, value: chain * 2000 },
-    stuns > 0 && { label: `${world.zone === 'G' ? 'BLINDED CRASHES' : 'BOSS STUNS     '} ${stuns} x 50000`, value: stuns * 50000 },
+    stuns > 0 && { label: `${({ G: 'BLINDED CRASHES', M: 'FLIP-OVERS     ' })[world.zone] || 'BOSS STUNS     '} ${stuns} x 50000`, value: stuns * 50000 },
     { label: `REMAINING SHIP  ${lives} x 100000`, value: lives * 100000 },
     { label: noMiss ? 'DEATHS 0   NO MISS BONUS' : `DEATHS ${deaths}`, value: noMiss ? 200000 : 0 },
     conts > 0 && { label: `CONTINUES ${conts}`, value: 0 },
@@ -320,9 +323,14 @@ const typed = (str, t, t0, per = 2) => str.slice(0, clamp(Math.floor((t - t0) / 
 let logoBuf = null;
 function drawLogo(ctx, cx, y, t) {
   const text = 'ABYSS RAID';
-  const S = 4, gap = 3, style = 'steel';
+  const S = 4, gap = 3, style = 'abyss';
   const full = bigText(text, { style, scale: S, italic: true, gap });
   const x0 = Math.round(cx - full.width / 2);
+  if (t >= 60) {
+    ctx.globalAlpha = 0.45;
+    ctx.drawImage(full, x0 + 1, y - full.pad + 3);
+    ctx.globalAlpha = 1;
+  }
   if (t < 60) {
     // letters drop in one by one
     const pos = bigLayout(text, { style, scale: S, italic: true, gap });
@@ -381,7 +389,7 @@ function cap(ctx, x, y, label, alpha = 1) {
 
 function drawControls(ctx, y, alpha) {
   const touchUI = isTouchUI();
-  const pw = 262, ph = 58, px0 = Math.round(W / 2 - pw / 2);
+  const pw = 262, ph = 43, px0 = Math.round(W / 2 - pw / 2);
   ctx.globalAlpha = alpha;
   ctx.fillStyle = 'rgba(2,6,18,0.78)';
   ctx.fillRect(px0, y, pw, ph);
@@ -410,7 +418,7 @@ function drawControls(ctx, y, alpha) {
   drawText(ctx, 'START', x + 4, r + 2, { style: 'white', alpha });
   x = cap(ctx, rx, r, 'M', alpha);
   drawText(ctx, 'MUTE', x + 4, r + 2, { style: 'grey', alpha });
-  drawText(ctx, 'GAMEPAD OK: D-PAD/STICK  A SHOT  B BURST', W / 2, r + 15, { style: 'dim', align: 'center', alpha });
+
 }
 
 // touch devices: same panel, touch instructions in key-cap style
@@ -420,7 +428,6 @@ function drawTouchControls(ctx, px0, y, alpha) {
     ['DRAG ANYWHERE', 'MOVE (AUTO-FIRE)', 'cyan'],
     ['BURST', 'ABYSS BURST  (ON-SCREEN BUTTON)', 'pink'],
     ['TAP', 'START  /  TAP A ZONE CARD TO PICK', 'white'],
-    ['FULL', 'FULLSCREEN', 'grey'],
   ];
   rows.forEach(([k, label, style], i) => {
     const r = y + 4 + i * 13;
@@ -430,9 +437,11 @@ function drawTouchControls(ctx, px0, y, alpha) {
 }
 
 // zone card layout (playfield coords), shared by drawing and tap hit-testing
-const CARD_Y = 80, CARD_W = 128, CARD_H = 19, CARD_GAP = 12;
+const CARD_Y = 110, CARD_H = 36, CARD_GAP = 12;
 function cardRects() {
   const order = zoneOrder();
+  // 140 px cards for two zones; narrower when more zones exist so all cards fit the 426 px width
+  const CARD_W = Math.min(140, Math.floor((W - 12 - (order.length - 1) * CARD_GAP) / order.length));
   const total = order.length * CARD_W + (order.length - 1) * CARD_GAP;
   const x0 = Math.round(W / 2 - total / 2);
   return order.map((z, i) => ({ z, x: x0 + i * (CARD_W + CARD_GAP), y: CARD_Y, w: CARD_W, h: CARD_H }));
@@ -440,69 +449,36 @@ function cardRects() {
 
 // two zone cards; the selected one is lit with blinking arrows
 function drawZoneSelect(ctx, world, y, alpha) {
-  const order = zoneOrder();
-  const cw = CARD_W, ch = CARD_H, gap = CARD_GAP;
-  const total = order.length * cw + (order.length - 1) * gap;
-  const x0 = Math.round(W / 2 - total / 2);
-  const t = world.sceneT;
-  order.forEach((z, i) => {
-    const d = ZDEF[z] || { letter: z, area: '' };
-    const x = x0 + i * (cw + gap);
-    const sel = z === selectedZone(world);
-    ctx.globalAlpha = alpha * (sel ? 0.95 : 0.85);
-    ctx.fillStyle = sel ? 'rgba(46,24,6,0.92)' : 'rgba(8,14,30,0.85)';
-    ctx.fillRect(x, y, cw, ch);
-    ctx.fillStyle = sel ? '#ffd040' : '#6a7a98';
-    ctx.fillRect(x, y, cw, 1); ctx.fillRect(x, y + ch - 1, cw, 1); ctx.fillRect(x, y, 1, ch); ctx.fillRect(x + cw - 1, y, 1, ch);
-    ctx.globalAlpha = 1;
-    const zt = bigText(z, { style: sel ? zoneStyle(z) : 'steel', scale: 2, gap: 1 });
-    ctx.globalAlpha = alpha * (sel ? 1 : 0.85);
-    ctx.drawImage(zt, x + 5 - zt.pad, y + 3 - zt.pad);
-    ctx.globalAlpha = 1;
-    drawText(ctx, 'ZONE ' + z, x + 22, y + 2, { style: sel ? 'gold' : 'grey', alpha });
-    drawText(ctx, d.area, x + 22, y + 10, { style: sel ? 'white' : 'grey', alpha });
-    if (sel && (t >> 4) & 1) {
-      drawText(ctx, '←', x - 9, y + 6, { style: 'gold', alpha });
-      drawText(ctx, '→', x + cw + 3, y + 6, { style: 'gold', alpha });
-    }
-  });
+  for (const r of cardRects()) {
+    const sel = r.z === selectedZone(world), d = ZDEF[r.z] || { name: r.z };
+    ctx.save(); ctx.globalAlpha = alpha;
+    ctx.fillStyle = sel ? '#152a38' : '#050e1b'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    drawKeyArt(ctx, r.z, r.x + 3, r.y + 3, 44, 20);
+    ctx.strokeStyle = sel ? '#ffd382' : '#415569'; ctx.strokeRect(r.x + .5, r.y + .5, r.w - 1, r.h - 1);
+    drawText(ctx, (sel ? '> ' : '  ') + 'ZONE ' + r.z, r.x + 51, r.y + 4, {style: sel ? 'gold' : 'grey'});
+    drawText(ctx, CARD_AREA[r.z] || '', r.x + 51, r.y + 15, {style:'cyan'});
+    drawText(ctx, d.name, r.x + r.w / 2, r.y + 26, {style: sel ? 'white' : 'grey', align:'center'});
+    ctx.restore();
+  }
 }
 
 function drawTitle(ctx, world) {
   const t = world.sceneT;
-  // hero: dark partial silhouette of the battleship drifting in from the right
+  drawKeyArt(ctx, selectedZone(world), 0, 0, W, H, t);
+  ctx.fillStyle = 'rgba(0,5,15,.24)'; ctx.fillRect(0, 0, W, 61);
+  ctx.fillStyle = 'rgba(0,5,15,.85)'; ctx.fillRect(0, 105, W, H - 105);
   ctx.drawImage(vignette(), 0, 0);
-  shade(ctx, 0.12);
-  const sil = titleSilhouette();
-  const sx = Math.round(lerp(150, 26, easeOutCubic(clamp(t / 120, 0, 1))) + Math.sin(t / 70) * 3);
-  const sy = Math.round(4 + Math.sin(t / 53) * 2);
-  ctx.drawImage(sil, sx, sy);
-  const glow = 0.6 + 0.4 * Math.sin(t / 9);
-  ctx.fillStyle = `rgba(255,40,60,${glow.toFixed(2)})`;
-  ctx.fillRect(sx + Math.round(TITLE_SIL_EYE[0]) - 1, sy + Math.round(TITLE_SIL_EYE[1]) - 1, 4, 3);
-  ctx.fillStyle = '#ffd0d0';
-  ctx.fillRect(sx + Math.round(TITLE_SIL_EYE[0]), sy + Math.round(TITLE_SIL_EYE[1]), 2, 1);
-
-  drawLogo(ctx, W / 2, 24, t);
+  ctx.fillStyle = 'rgba(180,240,255,.38)';
+  for (let i = 0; i < 17; i++) { const x = (i * 71 + 13) % W, y = (i * 41 + 216 - t * (0.12 + i % 3 * .04)) % 216; ctx.fillRect(x, (y + 216) % 216, 1, 2); }
+  drawLogo(ctx, W / 2, 12, t);
   if (t >= 56) {
-    const k = clamp((t - 56) / 20, 0, 1);
-    const half = Math.round(118 * easeOutCubic(k));
-    ctx.fillStyle = 'rgba(255,170,210,0.5)';
-    ctx.fillRect(W / 2 - half, 57, half * 2, 1);
-    ctx.fillStyle = '#ff6aa8';
-    ctx.fillRect(W / 2 - half, 58, half * 2, 1);
-    ctx.fillStyle = '#5a1838';
-    ctx.fillRect(W / 2 - half, 59, half * 2, 1);
-    drawBig(ctx, 'AXOLOTL', W / 2, 64, { style: 'pink', scale: 2, gap: 5, alpha: k });
-    drawZoneSelect(ctx, world, CARD_Y, k);
+    drawBig(ctx, 'AXOLOTL', W / 2, 47, {style:'pink', scale:2, gap:5});
+    drawZoneSelect(ctx, world, CARD_Y, clamp((t - 56) / 20, 0, 1));
   }
   if (t >= 70) {
-    if (((t - 70) % 60) < 40) drawBig(ctx, startPrompt(), W / 2, 104, { style: 'gold', scale: 1, gap: 2 });
-    drawControls(ctx, 117, clamp((t - 70) / 16, 0, 1));
+    if ((t - 70) % 60 < 44) drawBig(ctx, startPrompt(), W / 2, 152, {style:'gold', scale:1, gap:2});
+    drawControls(ctx, 169, clamp((t - 70) / 16, 0, 1));
   }
-  drawText(ctx, '© 2026 ABYSSAL WORKS  ORIGINAL ARCADE', W / 2, 186, { style: 'cyan', align: 'center' });
-  if (!isTouchUI()) drawText(ctx, 'FREE PLAY', W - 6, H - 10, { style: 'white', align: 'right' }); // touch: BURST button sits there
-  if (!isTouchUI()) drawText(ctx, 'BOSS ATTACK MODE', 6, H - 10, { style: 'dim' }); // touch: corner buttons
 }
 
 // --- approach
@@ -540,95 +516,8 @@ function drawApproach(ctx, world) {
 }
 
 // --- warning
-const WARN_L2 = 'AMBYSTOMA ROSEA'; // (zone V; used for sprite warm-up)
-const WARN_L3 = 'IS APPROACHING FAST';
-function drawBand(ctx, y, h, t, dir, slide) {
-  const ox = Math.round(slide * W * dir);
-  ctx.save();
-  ctx.translate(ox, 0);
-  ctx.drawImage(alarmBand(h), 0, y);
-  const hz = hazard(5);
-  const s = ((t * 1.5 * dir) % HAZ_P + HAZ_P) % HAZ_P;
-  ctx.drawImage(hz, -s - HAZ_P, y - 5);
-  ctx.drawImage(hz, s - HAZ_P, y + h);
-  // scrolling caution text inside the band
-  const msg = 'WARNING  !!  CAUTION  !!  ';
-  const mw = msg.length * 12;
-  const off = ((t * 1.2 * -dir) % mw + mw) % mw;
-  for (let x = -off - mw; x < W + mw; x += mw) drawText(ctx, msg, Math.round(x), y + Math.round((h - 14) / 2), { style: 'white', scale: 2, shadowStyle: 'dark' });
-  ctx.restore();
-}
-
 function drawWarning(ctx, world) {
-  const t = world.sceneT, L = warnLen(world);
-  const Z = zinfo(world);
-  const WARN_L1 = article(Z.title);
-  const WARN_L2 = Z.name;
-  const zoneV = Z.letter === 'V';
-  const short = L === WARNING_SHORT;
-  // red alarm pulse over the whole screen
-  const pulse = 0.5 + 0.5 * Math.sin(t * 0.2);
-  const env = clamp(t / 16, 0, 1) * clamp((L - t) / 30, 0, 1);
-  ctx.drawImage(vignette(), 0, 0);
-  shade(ctx, (0.08 + 0.12 * pulse) * env, '255,10,20');
-
-  // bands slide in (top from right, bottom from left) and out at the end
-  const inK = 1 - easeOutCubic(clamp(t / 22, 0, 1));
-  const outK = t > L - 28 ? easeOutCubic((t - (L - 28)) / 28) : 0;
-  const slide = Math.max(inK, outK);
-  drawBand(ctx, 18, 22, t, 1, outK > 0 ? -outK : slide);
-  drawBand(ctx, H - 36, 22, t, -1, outK > 0 ? -outK : slide);
-
-  // giant WARNING!! -expands from a line, then flashes
-  if (t >= 14 && t < L - 10) {
-    const sy = clamp((t - 14) / 8, 0.08, 1);
-    const flashing = t < 150 ? ((t >> 3) & 1) : ((t >> 4) & 1) || t > 240;
-    const style = t < 22 ? 'hot' : flashing ? 'red' : 'hot';
-    const dim = t > L - 30 ? (L - 10 - t) / 20 : 1;
-    drawBig(ctx, 'WARNING!!', W / 2, 52, { style, scale: 4, gap: 3, sy, alpha: dim });
-  }
-  // intro text
-  if (t >= 64 && !short) {
-    const a = t > L - 24 ? (L - t) / 24 : 1;
-    const l1 = typed(WARN_L1, t, 64, 2);
-    drawText(ctx, l1, W / 2 - textWidth(WARN_L1) / 2, 88, { style: 'white', alpha: a });
-    if (t >= 132) {
-      const n = clamp(Math.floor((t - 132) / 3), 0, WARN_L2.length);
-      const full = bigText(WARN_L2, { style: 'pink', scale: 2, gap: 2 });
-      const part = bigText(WARN_L2.slice(0, n) || ' ', { style: 'pink', scale: 2, gap: 2 });
-      if (n > 0) {
-        ctx.globalAlpha = a;
-        ctx.drawImage(part, Math.round(W / 2 - full.width / 2), 99 - part.pad);
-        ctx.globalAlpha = 1;
-        drawText(ctx, '"', Math.round(W / 2 - full.width / 2) - 14, 98, { style: 'pink', scale: 2, alpha: a });
-        if (n >= WARN_L2.length) drawText(ctx, '"', Math.round(W / 2 + full.width / 2) + 2, 98, { style: 'pink', scale: 2, alpha: a });
-      }
-    }
-    if (t >= 190) {
-      drawText(ctx, typed(WARN_L3, t, 190, 2), W / 2 - textWidth(WARN_L3) / 2, 117, { style: 'white', alpha: a });
-    }
-  }
-  // schematic box with scanning line
-  if (!zoneV && t >= 100 && t < L - 20) {
-    // non-axolotl zones: zone banner instead of the axolotl schematic
-    const k = easeOutCubic(clamp((t - 100) / 12, 0, 1));
-    drawBig(ctx, 'ZONE ' + Z.letter, W / 2, 134, { style: zoneStyle(Z.letter), scale: 2, gap: 3, sx: k, alpha: t > L - 30 ? (L - 20 - t) / 10 : 1 });
-    drawText(ctx, typed(Z.area || '', t, 112, 2), W / 2 - textWidth(Z.area || '') / 2, 156, { style: 'gold' });
-  }
-  if (zoneV && t >= 100 && t < L - 20) {
-    const on = t < 108 ? (t & 2) === 0 : true;
-    if (on) {
-      const sx = Math.round(W / 2 - SCHEM_W / 2), sy = 128;
-      ctx.drawImage(schematic(), sx, sy);
-      const scan = (t * 1.6) % SCHEM_W;
-      ctx.fillStyle = 'rgba(180,255,255,0.55)';
-      ctx.fillRect(sx + Math.round(scan), sy + 1, 1, SCHEM_H - 2);
-      ctx.fillStyle = 'rgba(180,255,255,0.18)';
-      ctx.fillRect(sx + Math.round(scan) - 3, sy + 1, 3, SCHEM_H - 2);
-      drawText(ctx, 'TARGET', sx + 3, sy + SCHEM_H - 9, { style: 'cyan', shadow: false });
-      if ((t >> 4) & 1) drawText(ctx, 'SIZE 412M', sx + SCHEM_W - 3, sy + 3, { style: 'red', align: 'right', shadow: false });
-    }
-  }
+  drawWarningVisual(ctx, world, zinfo(world), warnLen(world));
 }
 
 // --- boss name plate

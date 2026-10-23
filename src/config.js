@@ -8,6 +8,10 @@ export const W = 426; // 426x240 ≈ 16:9
 export const H = 216;
 export const HUD_H = 24;
 export const SCREEN_H = H + HUD_H;
+// Zones that share the SUNSET TIDELANDS sea stage (background, water surface, music, start kit):
+// G = PERIOPHTHALMUS (leaping mudskipper), M = the close-up "standing/prone" mudskipper rebuild.
+export const TIDE_ZONES = new Set(['G', 'M']);
+export const isTideZone = (world) => !!world && TIDE_ZONES.has(world.zone);
 export const FPS = 60;
 export const DT = 1 / FPS;
 
@@ -28,7 +32,11 @@ export const SHOTS = [
   { id: 'g-boss-entry', zone: 'G', scene: 'boss', frames: 120, expect: { scene: 'boss' } },
   { id: 'g-boss-p1', zone: 'G', scene: 'boss', frames: 600, bot: true, expect: { scene: 'boss' } },
   { id: 'g-boss-late', zone: 'G', scene: 'boss', frames: 400, bot: true, bossHpFrac: 0.2, expect: { scene: 'boss' } },
-  { id: 'clear',scene: 'clear', frames: 120, expect: { scene: 'clear' } },
+  { id: 'm-warning', zone: 'M', scene: 'warning', frames: 240, expect: { scene: 'warning' } },
+  { id: 'm-boss-entry', zone: 'M', scene: 'boss', frames: 150, expect: { scene: 'boss' } },
+  { id: 'm-boss-p1', zone: 'M', scene: 'boss', frames: 600, bot: true, expect: { scene: 'boss' } },
+  { id: 'm-boss-late', zone: 'M', scene: 'boss', frames: 400, bot: true, bossHpFrac: 0.25, expect: { scene: 'boss' } },
+  { id: 'clear', scene: 'clear', frames: 120, expect: { scene: 'clear' } },
 ];
 
 export const CAPTURE = { width: W * 3, height: SCREEN_H * 3 };

@@ -58,6 +58,15 @@ export function updateEvents(world) {
         break;
       }
       case 'gillKill': {
+        if (e.part === 'sail' || e.part === 'fin') {
+          // zone M: "SAIL n/3" / "FIN n/2"
+          const total = Math.max(1, Number(e.total) || (e.part === 'sail' ? 3 : 2));
+          const pleft = clamp(Number(e.left) || 0, 0, total);
+          S.popups.push({ text: `${e.part === 'sail' ? 'SAIL' : 'FIN'} ${total - pleft}/${total}`, x: Number(e.x) || W / 2, y: Number(e.y) || H / 2, t: 0, life: 44, style: e.part === 'sail' ? 'gold' : 'red' });
+          if (!S.flipHintShown) { S.flipHintShown = true; S.hint = { t: 0, msg: 'BREAK THE SAILS \u2192 FLIP IT OVER' }; }
+          S.gillFlash = 16;
+          break;
+        }
         if (e.part === 'eye') {
           // zone G eye turrets: "EYE n/2"; the last one folds into the BLINDED display
           const total = Math.max(1, Number(e.total) || 2);
@@ -81,7 +90,7 @@ export function updateEvents(world) {
         break;
       }
       case 'gillRegrow': {
-        if (e.part === 'eye') break;
+        if (e.part === 'eye' || e.part === 'sail' || e.part === 'fin') break;
         S.pendRegrow = (S.pendRegrow || []).concat([{ x: Number(e.x), y: Number(e.y) }]);
         const i = S.gillFallback.indexOf('dead');
         if (i >= 0) S.gillFallback[i] = 'alive';
@@ -372,7 +381,7 @@ function drawStun(ctx, st) {
     const scale = 1 - 0.7 * m;
     const y = Math.round((1 - m) * 46 + m * (y0 - 9));
     const style = an < 22 && (an >> 2) & 1 ? 'red' : 'hot';
-    drawBig(ctx, st.reason === 'blinded' ? 'BLINDED!' : 'STUN!', Math.round(W / 2 + (x0 + (st.reason === 'blinded' ? 24 : 15) - W / 2) * m), y, { style, scale: 4, gap: 3, sx: (1.7 - 0.7 * k) * scale, sy: k * scale, alpha: out * (1 - m) });
+    drawBig(ctx, stunLabel(st), Math.round(W / 2 + (x0 + (stunLabel(st).length > 5 ? 24 : 15) - W / 2) * m), y, { style, scale: 4, gap: 3, sx: (1.7 - 0.7 * k) * scale, sy: k * scale, alpha: out * (1 - m) });
     if (an < 22) return;
   }
   const pa = clamp((an - 25) / 6, 0, 1) * out;
@@ -382,7 +391,7 @@ function drawStun(ctx, st) {
   ctx.fillStyle = '#ff3a4a';
   ctx.fillRect(x0 - 3, y0 - 11, bw + 6, 1);
   ctx.globalAlpha = 1;
-  drawText(ctx, st.reason === 'blinded' ? 'BLINDED!' : 'STUN!', x0, y0 - 9, { style: 'red', alpha: pa });
+  drawText(ctx, stunLabel(st), x0, y0 - 9, { style: 'red', alpha: pa });
   drawText(ctx, 'BREAK CHANCE', x0 + bw, y0 - 9, { style: (an >> 3) & 1 ? 'gold' : 'white', align: 'right', alpha: pa });
   ctx.globalAlpha = pa;
   ctx.fillStyle = '#3a0814';
@@ -520,4 +529,50 @@ function drawSkim(ctx, S, world) {
   ctx.fillStyle = `rgba(120,255,230,${(0.22 * a).toFixed(2)})`;
   ctx.fillRect(x + 4, y - 1, 22, 1);
   ctx.fillRect(x + 4, y + 1, 22, 1);
+}
+
+const STUN_LABEL = { blinded: 'BLINDED!', flipped: 'FLIPPED!' };
+function stunLabel(st) { return STUN_LABEL[st && st.reason] || 'STUN!'; }
+
+// Zone M: "SAILS ■■■ FINS ■■" tracker (SCREEN coords) from boss.sails / boss.fins.
+export function drawPartTracker(ctx, world, t) {
+  const b = world.boss;
+  const S = world.hudState && world.hudState.ev;
+  const sails = b && Array.isArray(b.sails) ? b.sails : [];
+  const fins = b && Array.isArray(b.fins) ? b.fins : [];
+  if (!sails.length && !fins.length) return;
+  const y = HUD_H + 12;
+  const wS = 34 + sails.length * 9, wF = 28 + fins.length * 9;
+  const x0 = W - 8 - (wS + wF + 6);
+  ctx.fillStyle = 'rgba(2,2,10,0.82)';
+  ctx.fillRect(x0 - 4, y - 2, wS + wF + 14, 11);
+  ctx.fillStyle = '#5a3a10';
+  ctx.fillRect(x0 - 4, y + 9, wS + wF + 14, 1);
+  const flash = S && S.gillFlash > 0 && (S.gillFlash >> 1) & 1;
+  const pip = (x, q, col, hi) => {
+    const st = q && q.state;
+    ctx.fillStyle = '#6a5a70'; ctx.fillRect(x, y, 7, 7);
+    ctx.fillStyle = '#120810'; ctx.fillRect(x + 1, y + 1, 5, 5);
+    if (st === 'ok' || st === 'cracked') {
+      const k = q && q.max > 0 ? clamp(q.hp / q.max, 0, 1) : 1;
+      const h = Math.max(1, Math.round(5 * k));
+      ctx.fillStyle = col; ctx.fillRect(x + 1, y + 6 - h, 5, h);
+      ctx.fillStyle = hi; ctx.fillRect(x + 1, y + 6 - h, 5, 1);
+      if (st === 'cracked') { ctx.fillStyle = '#120810'; ctx.fillRect(x + 3, y + 1, 1, 3); ctx.fillRect(x + 2, y + 3, 1, 2); }
+    } else if (st === 'broken') {
+      ctx.fillStyle = '#ff4050';
+      for (let k = 0; k < 5; k++) { ctx.fillRect(x + 1 + k, y + 1 + k, 1, 1); ctx.fillRect(x + 5 - k, y + 1 + k, 1, 1); }
+    } else {
+      // regrowing: pulsing bud
+      ctx.fillStyle = (t >> 3) & 1 ? hi : col; ctx.fillRect(x + 2, y + 3, 3, 3);
+    }
+  };
+  let x = x0;
+  drawText(ctx, 'SAILS', x, y, { style: flash ? 'white' : 'gold', shadow: false });
+  x += 32;
+  sails.forEach((q) => { pip(x, q, '#e0a030', '#fff0a0'); x += 9; });
+  x += 6;
+  drawText(ctx, 'FINS', x, y, { style: flash ? 'white' : 'red', shadow: false });
+  x += 26;
+  fins.forEach((q) => { pip(x, q, '#d04040', '#ffb0a0'); x += 9; });
 }

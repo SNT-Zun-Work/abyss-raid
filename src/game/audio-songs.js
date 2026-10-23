@@ -181,10 +181,10 @@ export function bossTheme(opts = {}) {
 export const finalTheme = () => bossTheme({ final: true });
 
 // ------------------------------------------------------------------ TITLE
-// "SUNKEN CHORALE" — moody pad + FM-bell arpeggio + sparse pluck melody, 84 BPM, 8-bar loop.
+// "SUNKEN CHORALE" — slow choir swells, sonar bells and a distant pluck melody.
 export function titleTheme() {
-  const S = song(84);
-  S.gain = 1.7;
+  const S = song(76);
+  S.gain = 1.35;
   const { add } = S;
   const prog = [['D', 'add9'], ['Bb', 'M7'], ['G', 'm7'], ['A', 'sus'], ['D', 'add9'], ['Bb', 'M7'], ['Eb', 'M7'], ['A', 'd7']];
   const MEL = {
@@ -195,14 +195,15 @@ export function titleTheme() {
   };
   prog.forEach(([r, q], b) => {
     const s0 = b * 16;
-    add(s0, 'pad', chordNotes(ROOT[r], q, 58), 16, 1);
+    add(s0, 'pad', chordNotes(ROOT[r], q, 58), 16, 0.8);
+    add(s0 + 2, 'choir', chordNotes(ROOT[r], q, 62), 13, b < 4 ? 0.32 : 0.48);
     add(s0, 'bass', ROOT[r] - 12 + (ROOT[r] > 44 ? 0 : 12), 14, 0.45);
     const tones = chordNotes(ROOT[r], q, 70);
     const up = [...tones, ...tones.map((n) => n + 12)];
-    for (let k = 0; k < 16; k++) add(s0 + k, 'bell', up[(k * 1) % up.length], 1, 0.38 - (k % 2) * 0.12, Math.sin(k * 0.8) * 0.6);
+    for (let k = 0; k < 16; k += 2) add(s0 + k, 'bell', up[k / 2 % up.length], 2, k % 4 ? 0.16 : 0.25, k % 4 ? -0.5 : 0.5);
     if (b % 4 === 0) add(s0, 'timp', ROOT[r] - 12, 2, 0.35);
-    for (const [k, m, l] of MEL[b] || []) add(s0 + k, 'pluck', m, l, 0.9);
-    if (b % 2 === 1) add(s0 + 8, 'hat', 1, 1, 0.25, 0.5);
+    for (const [k, m, l] of MEL[b] || []) add(s0 + k, 'pluck', m, l, 0.65);
+    if (b >= 4) { add(s0, 'kick', 0, 1, 0.24); add(s0 + 10, 'timp', ROOT[r] - 12, 2, 0.18); }
   });
   S.loopStart = 0;
   S.loopEnd = prog.length * 16;

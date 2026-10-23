@@ -16,7 +16,7 @@ import { SONGS } from './audio-songs.js';
 const LOOKAHEAD = 0.2;
 const SCENE_SONG = { title: 'title', approach: 'approach', warning: null, boss: 'boss', clear: 'victory', gameover: 'gameover', continue: null, allclear: 'victory' };
 // boss music per zone: [normal, final form]
-const ZONE_SONGS = { V: ['boss', 'final'], G: ['mud', 'mudFinal'] };
+const ZONE_SONGS = { V: ['boss', 'final'], G: ['mud', 'mudFinal'], M: ['mud', 'mudFinal'] };
 const zoneSong = (world, final) => {
   const z = ZONE_SONGS[(world && world.zone) || 'V'] || ZONE_SONGS.V;
   return z[final ? 1 : 0];

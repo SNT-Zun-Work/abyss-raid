@@ -4,6 +4,7 @@
 // stop their oscillators, so they are fire-and-forget and work identically in
 // an AudioContext or an OfflineAudioContext (used for headless analysis).
 
+import { warningScore } from './audio-warning.js';
 export const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
 export function createEngine(ctx) {
@@ -21,7 +22,7 @@ export function createEngine(ctx) {
   clip.curve = softClipCurve();
   clip.oversample = '2x';
   E.out = ctx.createGain();
-  E.out.gain.value = 1;
+  E.out.gain.value = 0.9;
   E.master.connect(comp);
   comp.connect(clip);
   clip.connect(E.out);
@@ -38,14 +39,16 @@ export function createEngine(ctx) {
   E.music.connect(E.musicLP);
   E.musicLP.connect(E.master);
   E.sfx = ctx.createGain();
-  E.sfx.gain.value = 0.8;
-  E.sfx.connect(E.master);
+  E.sfx.gain.value = 0.68;
+  const sfxLP = ctx.createBiquadFilter();
+  sfxLP.type = 'lowpass'; sfxLP.frequency.value = 8200; sfxLP.Q.value = 0.5;
+  E.sfx.connect(sfxLP); sfxLP.connect(E.master);
 
   // shared reverb (generated impulse) and tempo-synced echo
   E.rev = ctx.createConvolver();
   E.rev.buffer = impulse(ctx, 2.4, 2.6);
   E.revOut = ctx.createGain();
-  E.revOut.gain.value = 0.32;
+  E.revOut.gain.value = 0.24;
   E.rev.connect(E.revOut);
   E.revOut.connect(E.master);
   E.revIn = ctx.createGain();
@@ -509,44 +512,7 @@ export const SFX = {
     chain(bp, am, ws, g, out);
     send(E, g, 0.7);
   }],
-  warning: [4.0, (E, out, t) => {
-    // two-tone alarm siren with a low drone underneath, ~5.2 s
-    const dur = 5.2;
-    const a = osc(E, 'sawtooth', 620, t, t + dur);
-    const b = osc(E, 'square', 622, t, t + dur);
-    for (let k = 0; k < Math.floor(dur / 0.65); k++) {
-      const tk = t + k * 0.65;
-      a.frequency.setValueAtTime(620, tk);
-      a.frequency.linearRampToValueAtTime(930, tk + 0.3);
-      a.frequency.setValueAtTime(930, tk + 0.33);
-      a.frequency.linearRampToValueAtTime(620, tk + 0.62);
-      b.frequency.setValueAtTime(311, tk);
-      b.frequency.linearRampToValueAtTime(466, tk + 0.3);
-      b.frequency.setValueAtTime(466, tk + 0.33);
-      b.frequency.linearRampToValueAtTime(311, tk + 0.62);
-    }
-    const lp = filt(E, 'lowpass', 2200, 3);
-    const bg = gain(E, 0.5);
-    chain(b, bg, lp);
-    a.connect(lp);
-    const g = gain(E);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.13, t + 0.08);
-    g.gain.setValueAtTime(0.13, t + dur - 0.4);
-    g.gain.linearRampToValueAtTime(0, t + dur);
-    chain(lp, g, out);
-    send(E, g, 0.5);
-    const d = osc(E, 'sawtooth', 36.7, t, t + dur);
-    const d2 = osc(E, 'sawtooth', 37.2, t, t + dur);
-    const dl = filt(E, 'lowpass', 160, 2);
-    const dg = gain(E);
-    dg.gain.setValueAtTime(0, t);
-    dg.gain.linearRampToValueAtTime(0.32, t + 1.2);
-    dg.gain.linearRampToValueAtTime(0, t + dur);
-    d.connect(dl); d2.connect(dl);
-    chain(dl, dg, out);
-    VOICES.timp(E, out, t, 38, 1, 0.9);
-  }],
+  warning: [4.0, (E, out, t, zone) => warningScore(E, out, t, zone)],
   bomb: [0.5, (E, out, t) => {
     // black hole: deep descending sweep + inward-rushing noise
     const o = osc(E, 'sawtooth', 220, t, t + 1.8);
@@ -708,23 +674,7 @@ export const SFX = {
     g.gain.linearRampToValueAtTime(0, t + 0.28);
     chain_(o, filt(E, 'lowpass', 700), g, out);
   }],
-  warningShort: [1.0, (E, out, t) => {
-    const a = osc(E, 'sawtooth', 620, t, t + 1.4);
-    for (let k = 0; k < 2; k++) {
-      const tk = t + k * 0.65;
-      a.frequency.setValueAtTime(620, tk);
-      a.frequency.linearRampToValueAtTime(930, tk + 0.3);
-      a.frequency.setValueAtTime(930, tk + 0.33);
-      a.frequency.linearRampToValueAtTime(620, tk + 0.62);
-    }
-    const g = gain(E);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.12, t + 0.06);
-    g.gain.setValueAtTime(0.12, t + 1.1);
-    g.gain.linearRampToValueAtTime(0, t + 1.35);
-    chain_(a, filt(E, 'lowpass', 2200, 3), g, out);
-    VOICES.timp(E, out, t, 38, 1, 0.8);
-  }],
+  warningShort: [1.0, (E, out, t, zone) => warningScore(E, out, t, zone, 1.56)],
   // ---- spectacle (giga laser etc.)
   riser: [1.0, (E, out, t) => {
     const d = 1.3;

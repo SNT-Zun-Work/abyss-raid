@@ -13,4 +13,4 @@ original procedural or AI-generated artwork; no assets from any commercial game 
 | Abyss Burst | H | BURST button |
 | Mute | M | — |
 
-Version: v0.8
+Version: v0.9

@@ -162,6 +162,7 @@ export function drawText(ctx, str, x, y, opts = {}) {
 // ---------- big chrome font ----------
 // Palettes: [t, '#rrggbb'] stops over glyph height; a hard "horizon" makes it chrome.
 export const CHROME = {
+  abyss: [[0, '#ffffff'], [0.12, '#d8fcff'], [0.36, '#65b3d9'], [0.46, '#294b70'], [0.5, '#071325'], [0.54, '#0d233c'], [0.72, '#858cac'], [0.9, '#e7b8ca'], [1, '#fff5e9']],
   steel: [[0, '#ffffff'], [0.18, '#e4f2ff'], [0.42, '#86b4ec'], [0.49, '#4a6cb8'], [0.5, '#141a40'], [0.58, '#2c2c5c'], [0.74, '#a46a98'], [0.9, '#ffc4e0'], [1, '#fff0f8']],
   red: [[0, '#fff6ea'], [0.2, '#ffc4a8'], [0.44, '#ff4a3a'], [0.49, '#c81424'], [0.5, '#3a0008'], [0.6, '#7a0c18'], [0.78, '#ff4a20'], [0.92, '#ffb040'], [1, '#fff0a0']],
   hot: [[0, '#ffffff'], [0.45, '#fff4e8'], [0.5, '#ffb0a0'], [0.7, '#ffe0c0'], [1, '#ffffff']],

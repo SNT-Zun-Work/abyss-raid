@@ -19,11 +19,13 @@ import { botInput } from './game/bot.js';
 import * as audio from './game/audio.js';
 import { loadVisualAssets } from './game/g-visual-assets.js';
 import { loadAxolotlAssets } from './game/v-visual-assets.js';
+import { loadPresentationArt } from './game/ui-presentation-visual.js';
+import { loadPlayerVisual } from './game/player-visual.js';
 
 // Painted-art assets (Codex visual pass, ~1.7 MB WebP) must be ready before the
 // sprite caches are built in createWorld. index.html shows a LOADING overlay
 // meanwhile; a failed load falls back to the procedural art.
-if (new URLSearchParams(location.search).get('visual') !== '0') await Promise.all([loadVisualAssets(), loadAxolotlAssets()]);
+if (new URLSearchParams(location.search).get('visual') !== '0') await Promise.all([loadVisualAssets(), loadAxolotlAssets(), loadPresentationArt(), loadPlayerVisual()]);
 document.getElementById('loading')?.remove();
 
 const params = new URLSearchParams(location.search);
@@ -64,7 +66,7 @@ function render() {
   // Painted zones render at detail× the logical 426x240 (gameplay coords unchanged).
   // Touch devices use 2× to keep phones smooth; ?detail=N overrides for testing.
   const want = Number(params.get('detail')) || (touchActive() ? 2 : 3);
-  const detail = ['G', 'V'].includes(world.zone) && params.get('visual') !== '0' ? want : 1;
+  const detail = ['G', 'V', 'M'].includes(world.zone) && params.get('visual') !== '0' ? want : 1;
   if(low.width !== W*detail){low.width=W*detail;low.height=H*detail;}
   lctx.setTransform(detail, 0, 0, detail, 0, 0);
   lctx.imageSmoothingEnabled = false; // pixel art: rotated/scaled sprites stay nearest-neighbour

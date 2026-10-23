@@ -406,7 +406,7 @@ function surfaceY(world) {
   const bg = world.bg;
   return bg && typeof bg.surfaceY === 'number' ? bg.surfaceY : Math.round(H * 0.66);
 }
-function surfaceTop(world) { return world.zone === 'G' ? surfaceY(world) : SURFACE_Y; }
+function surfaceTop(world) { return world.zone === 'G' || world.zone === 'M' ? surfaceY(world) : SURFACE_Y; }
 
 const SPLASH = { small: { n: 10, k: 0.7, rings: 1, col: 0 }, medium: { n: 20, k: 1, rings: 1, col: 3 }, large: { n: 34, k: 1.3, rings: 2, col: 7 } };
 

@@ -17,6 +17,7 @@ import { clamp, swapRemove, TAU } from '../core/util.js';
 import * as fx from './fx.js';
 import { emit } from './world.js';
 import * as audio from './audio.js';
+import { drawPlayerVisual } from './player-visual.js';
 import { art, SHIP_CX, SHIP_CY, SHIELD_W, SHIELD_H, ORB_S, SHIELD_COLOR } from './player-art.js';
 import {
   fire, updateShots, drawShots, launchBurst, burstGuard, updateBurst, drawBurst,
@@ -42,7 +43,7 @@ export function init(world) {
   world.player = {
     x: -30, y: H / 2, alive: true, lives: 2, invuln: 0, respawn: 0, entering: 0, parked: true,
     bank: 0, cool: 0, waveCool: 0, homingCool: 0, homingSide: 1, muzzle: 0, volley: 0,
-    ...(world.zone === 'G' ? START_G : START),
+    ...(world.zone === 'G' || world.zone === 'M' ? START_G : START),
     laserMax: LASER_MAX, waveMax: WAVE_MAX, homingMax: HOMING_MAX, shieldMax: SHIELD_MAX, burstMax: BURST_MAX,
     shieldFlash: 0, shieldGrace: 0, itemsCollected: 0, kvx: 0, kvy: 0, pops: [], impacts: [], burst: null, t: 0, collectFx: null, sceneSeen: null, lastItem: null, lastDeath: null,
   };
@@ -343,6 +344,7 @@ function drawItems(ctx, world) {
 }
 
 function drawShip(ctx, world) {
+  if (drawPlayerVisual(ctx, world)) return;
   const p = world.player, A = art();
   const x = Math.round(p.x), y = Math.round(p.y);
   const f = (world.frame >> 1) & 3;

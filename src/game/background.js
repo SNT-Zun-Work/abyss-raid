@@ -24,10 +24,11 @@ import { hash } from './bg-noise.js';
 import { getArt, M, BW, BH, TW, RAY_W } from './bg-art.js';
 import { initMood, updateMood, drawAlarm, drawFar, drawNear, gradeMood, rasterAmp, lightPulse } from './bg-mood.js';
 import * as zoneG from './bg-g.js';
+import { isTideZone } from '../config.js';
 import { drawBack as drawVisualV } from './v-visual-background.js';
 
 // Zone dispatch: 'G' = SUNSET TIDELANDS (bg-g.js); anything else = the V cavern below.
-const isG = (world) => world && world.zone === 'G';
+const isG = (world) => isTideZone(world); // G and M share the tidelands stage
 
 const PAR = { ray: 0.03, skyline: 0.03, far: 0.06, farCeil: 0.12, mid: 0.2, near: 0.38, ceil: 0.55, front: 0.8, specks: 1 };
 
