@@ -1,3 +1,4 @@
+import { enhanceAxolotlSprites } from './v-visual-parts.js';
 // Boss part geometry (part space, facing left; origin = pivot). Owned by the
 // boss agent. Everything here runs once at load (sprites are cached).
 //
@@ -441,7 +442,7 @@ function composeFry(parts, k, ang, wig) {
 // ---- build everything once --------------------------------------------------
 let CACHE = null;
 export function getSprites() {
-  if (CACHE) return CACHE;
+  if (CACHE) return enhanceAxolotlSprites(CACHE);
   const S = {};
   const piece = (pc, opt) => ({ ...buildPart(pc.def, opt), ox: pc.ox, oy: pc.oy });
   S.torso = buildPart(torsoDef(), { red: true });
@@ -511,5 +512,5 @@ export function getSprites() {
   S.tellGlow = buildGlow(8, [170, 250, 255], 3); // attack tells: cool white-cyan, never orange
   S.coreGlow = buildGlow(24, [255, 190, 110], 6);
   S.beamThin = buildBeamStrip(3, ['#ffffff', '#ffc0c8', '#ff5a70', '#a01030']);
-  return (CACHE = S);
+  return enhanceAxolotlSprites(CACHE = S);
 }

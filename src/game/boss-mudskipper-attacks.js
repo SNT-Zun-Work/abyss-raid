@@ -540,12 +540,19 @@ export function drawHazards(ctx, world, b, S, layer) {
   }
   // mud balls + landing marks
   for (const q of b.mud) {
-    const s = q.big ? S.mudBig : S.mud;
-    ctx.drawImage(s.img, Math.round(q.x) - s.px, Math.round(q.y) - s.py);
-    if (q.mark && q.tx !== undefined && (b.t >> 2) & 1) {
-      ctx.fillStyle = '#a8f6ff';
+    // high-contrast orb (visual radius a bit larger than the hit radius) + warm glow
+    const o = q.big ? S.orbL : q.r <= 3 ? S.orbS : S.orbM;
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5;
+    ctx.drawImage(S.orbGlow, Math.round(q.x) - 10, Math.round(q.y) - 10);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    ctx.drawImage(o, Math.round(q.x) - (o.width >> 1), Math.round(q.y) - (o.height >> 1));
+    if (q.mark && q.tx !== undefined) {
+      // steady landing mark: 2px cyan cross with a dark outline
       const x = Math.round(q.tx), y = Math.round(q.ty);
-      ctx.fillRect(x - 3, y, 2, 1); ctx.fillRect(x + 2, y, 2, 1); ctx.fillRect(x, y - 3, 1, 2); ctx.fillRect(x, y + 2, 1, 2);
+      ctx.fillStyle = '#06121a';
+      ctx.fillRect(x - 6, y - 2, 13, 4); ctx.fillRect(x - 2, y - 6, 4, 13);
+      ctx.fillStyle = '#9ef6ff';
+      ctx.fillRect(x - 5, y - 1, 4, 2); ctx.fillRect(x + 2, y - 1, 4, 2); ctx.fillRect(x - 1, y - 5, 2, 4); ctx.fillRect(x - 1, y + 2, 2, 4);
     }
   }
   // geyser columns

@@ -13,9 +13,14 @@
          touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none;
          -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+             color: #8fe8ff; font: 700 18px/1.4 monospace; letter-spacing: 4px; background: #000; z-index: 30; }
+  #loading span { animation: blink 0.8s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
 </style>
 </head>
 <body>
+<div id="loading"><span>NOW LOADING</span></div>
 <canvas id="screen" width="1278" height="720"></canvas>
 <script type="module" src="./src/main.js"></script>
 </body>

@@ -15,6 +15,7 @@
 //   in + rain + rougher sea; P4 blood-red sky, lightning, tidal surge waves.
 
 import { W, H } from '../config.js';
+import { drawBack as drawVisualBack } from './g-visual-background.js';
 import { makeSprite } from '../core/util.js';
 import { M, BW, BH, TW } from './bg-art.js';
 import { getGArt, SURF_DEFAULT, SUN_X, SKY_EXTRA, GS_W, GS_FR } from './bg-g-art.js';
@@ -76,6 +77,7 @@ function layer(img, f, s, dy = 0) {
 const GULLS = [0, 1, 2, 3].map((i) => ({ x: 60 + i * 113, y: 26 + i * 11, v: 0.25 + i * 0.07, ph: i * 1.9 }));
 
 export function drawBack(ctx, world) {
+  if (drawVisualBack(ctx, world)) return;
   const A = getGArt();
   ensure();
   const bg = world.bg, m = bg.mood, s = bg.scroll, t = bg.t;

@@ -540,10 +540,11 @@ function part(s, x, y, a, group, opt) {
   ctx.translate(Math.round(x), Math.round(y));
   if (a) ctx.rotate(a);
   const far = opt && opt.far;
-  ctx.drawImage(far && s.farImg ? s.farImg : s.img, -s.px, -s.py);
+  const img = far && s.farImg ? s.farImg : s.img, ds = s.detailScale || 1;
+  ctx.drawImage(img, -s.px, -s.py, img.width/ds, img.height/ds);
   const red = far ? s.farRed : s.red;
-  if (_b.flush > 0.02 && red) { ctx.globalAlpha = _b.flush * (0.55 + 0.25 * Math.sin(_b.t * 0.15)); ctx.drawImage(red, -s.px, -s.py); }
-  if (group && _b.flashT[group] > 0 && (_b.t & 1)) { ctx.globalAlpha = 0.45; ctx.drawImage(s.white, -s.px, -s.py); }
+  if (_b.flush > 0.02 && red) { ctx.globalAlpha = _b.flush * (0.55 + 0.25 * Math.sin(_b.t * 0.15)); ctx.drawImage(red, -s.px, -s.py, red.width/ds, red.height/ds); }
+  if (group && _b.flashT[group] > 0 && (_b.t & 1)) { ctx.globalAlpha = 0.45; ctx.drawImage(s.white, -s.px, -s.py, s.white.width/ds, s.white.height/ds); }
   ctx.restore();
 }
 

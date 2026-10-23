@@ -24,6 +24,7 @@ import { hash } from './bg-noise.js';
 import { getArt, M, BW, BH, TW, RAY_W } from './bg-art.js';
 import { initMood, updateMood, drawAlarm, drawFar, drawNear, gradeMood, rasterAmp, lightPulse } from './bg-mood.js';
 import * as zoneG from './bg-g.js';
+import { drawBack as drawVisualV } from './v-visual-background.js';
 
 // Zone dispatch: 'G' = SUNSET TIDELANDS (bg-g.js); anything else = the V cavern below.
 const isG = (world) => world && world.zone === 'G';
@@ -86,6 +87,7 @@ const RAYS = [
 
 export function drawBack(ctx, world) {
   if (isG(world)) return zoneG.drawBack(ctx, world);
+  if (drawVisualV(ctx,world)) return;
   const A = getArt();
   ensureBuffers();
   const bg = world.bg;

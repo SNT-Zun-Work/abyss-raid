@@ -6,6 +6,7 @@
 // Part space: facing LEFT, origin = the part's pivot.
 import { buildPart, buildGlow } from './boss-art.js';
 import { makeSprite } from '../core/util.js';
+import { enhanceMudSprites } from './g-visual-parts.js';
 
 const E = (x, y, rx, ry, m, o = {}) => ({ k: 'e', x, y, rx, ry, m, ...o });
 const C = (x1, y1, x2, y2, r1, r2, m, o = {}) => ({ k: 'c', x1, y1, x2, y2, r1, r2, m, ...o });
@@ -183,9 +184,24 @@ function mudBallDef(r) {
   return def([E(0, 0, r, r, 'iron', { lum: -0.12 }), E(-0.5, -0.5, r * 0.5, r * 0.5, 'redglow', { lum: -0.25 })], [DOT(-r * 0.5, -r * 0.5, { lt: 2 })]);
 }
 
+// high-contrast projectile orb: dark outline, warm 1px rim, glowing hot core (reads on any background)
+function orbSprite(R) {
+  const d = 2 * R + 3, c = R + 1;
+  return makeSprite(d, d, (ctx) => {
+    for (let y = 0; y < d; y++) for (let x = 0; x < d; x++) {
+      const q = Math.hypot(x - c, y - c);
+      let col = null;
+      if (q <= R - 1.1) col = q < R * 0.35 ? '#fff6c8' : q < R * 0.65 ? '#ffb040' : '#e0561c';
+      else if (q <= R) col = '#ffd060';
+      else if (q <= R + 1) col = '#1a0806';
+      if (col) { ctx.fillStyle = col; ctx.fillRect(x, y, 1, 1); }
+    }
+  });
+}
+
 let CACHE = null;
 export function getMudSprites() {
-  if (CACHE) return CACHE;
+  if (CACHE) return enhanceMudSprites(CACHE);
   const S = {};
   S.torso = buildPart(torsoDef(), { red: true });
   S.head = buildPart(headDef(), { red: true });
@@ -204,6 +220,8 @@ export function getMudSprites() {
   S.flak = buildPart(mudBallDef(5));
   S.mud = buildPart(mudBallDef(4));
   S.mudBig = buildPart(mudBallDef(6));
+  S.orbS = orbSprite(4); S.orbM = orbSprite(5); S.orbL = orbSprite(7);
+  S.orbGlow = buildGlow(10, [255, 140, 40], 3);
   S.eyeGlow = buildGlow(10, [255, 50, 30], 4);
   S.redLight = buildGlow(4, [255, 40, 30], 3);
   S.sailFire = buildGlow(26, [255, 120, 40], 6);
@@ -219,5 +237,5 @@ export function getMudSprites() {
       ctx.fillRect(x, y, 1, 1);
     }
   });
-  return (CACHE = S);
+  return enhanceMudSprites(CACHE = S);
 }

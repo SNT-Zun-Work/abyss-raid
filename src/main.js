@@ -13,10 +13,18 @@
 
 import { W, SCREEN_H as H, DT, SHOTS } from './config.js';
 import { attachInput, readInput, resetInput } from './core/input.js';
-import { attachTouch, setTouchScale } from './core/touch.js';
+import { attachTouch, setTouchScale, touchActive } from './core/touch.js';
 import { createWorld, stepWorld, drawWorld } from './game/world.js';
 import { botInput } from './game/bot.js';
 import * as audio from './game/audio.js';
+import { loadVisualAssets } from './game/g-visual-assets.js';
+import { loadAxolotlAssets } from './game/v-visual-assets.js';
+
+// Painted-art assets (Codex visual pass, ~1.7 MB WebP) must be ready before the
+// sprite caches are built in createWorld. index.html shows a LOADING overlay
+// meanwhile; a failed load falls back to the procedural art.
+if (new URLSearchParams(location.search).get('visual') !== '0') await Promise.all([loadVisualAssets(), loadAxolotlAssets()]);
+document.getElementById('loading')?.remove();
 
 const params = new URLSearchParams(location.search);
 const shotDef = params.get('shot') ? SHOTS.find((s) => s.id === params.get('shot')) : null;
@@ -36,6 +44,7 @@ const seedParam = Number(params.get('seed'));
 let world = createWorld({
   seed: params.has('seed') && Number.isInteger(seedParam) ? seedParam : 1,
   scene: (shotDef && shotDef.scene) || params.get('scene') || 'title',
+  // The game order is V → G; the Codex comparison build defaulted to G, the game does not.
   zone: (shotDef && shotDef.zone) || (params.get('zone') || 'V').toUpperCase(),
   bossHpFrac: shotDef && shotDef.bossHpFrac !== undefined ? shotDef.bossHpFrac : Number(params.get('hp') || 1),
 });
@@ -52,7 +61,12 @@ function step(n = 1) {
 }
 
 function render() {
-  lctx.setTransform(1, 0, 0, 1, 0, 0);
+  // Painted zones render at detail× the logical 426x240 (gameplay coords unchanged).
+  // Touch devices use 2× to keep phones smooth; ?detail=N overrides for testing.
+  const want = Number(params.get('detail')) || (touchActive() ? 2 : 3);
+  const detail = ['G', 'V'].includes(world.zone) && params.get('visual') !== '0' ? want : 1;
+  if(low.width !== W*detail){low.width=W*detail;low.height=H*detail;}
+  lctx.setTransform(detail, 0, 0, detail, 0, 0);
   lctx.imageSmoothingEnabled = false; // pixel art: rotated/scaled sprites stay nearest-neighbour
   drawWorld(lctx, world);
   dctx.imageSmoothingEnabled = false;

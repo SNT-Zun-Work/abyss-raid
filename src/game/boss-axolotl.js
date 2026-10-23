@@ -735,6 +735,7 @@ function updateDeath(world, b) {
 
 // ----------------------------------------------------------------- draw ---
 let _ctx, _flush, _shadow, _b;
+function paintPart(ctx,s,image){const scale=s.detailScale||1;ctx.drawImage(image,-s.px,-s.py,image.width/scale,image.height/scale);}
 function part(s, p, ox, oy, group, opt) {
   if (!s) return;
   const ctx = _ctx;
@@ -747,17 +748,17 @@ function part(s, p, ox, oy, group, opt) {
   const sc = opt && opt.sc;
   if (sc !== undefined && sc !== 1) ctx.scale(sc, sc);
   const far = opt && opt.far;
-  ctx.drawImage(far && s.farImg ? s.farImg : s.img, -s.px, -s.py);
+  paintPart(ctx,s,far && s.farImg ? s.farImg : s.img);
   const red = far ? s.farRed : s.red;
   if (_flush > 0.02 && red) {
     ctx.globalAlpha = _flush;
-    ctx.drawImage(red, -s.px, -s.py);
+    paintPart(ctx,s,red);
   }
   const fl = opt && opt.flame > 0.01 ? (far ? s.farFlame : s.flame) : null;
-  if (fl) { ctx.globalAlpha = opt.flame * (0.85 + 0.15 * Math.sin(_b.t * 0.6)); ctx.drawImage(fl, -s.px, -s.py); }
-  if (opt && opt.white) { ctx.globalAlpha = 0.85; ctx.drawImage(s.white, -s.px, -s.py); }
-  if (group && _b.flashT[group] > 0 && (_b.t & 1)) { ctx.globalAlpha = 0.42; ctx.drawImage(s.white, -s.px, -s.py); }
-  if (_shadow > 0.01) { ctx.globalAlpha = _shadow; ctx.drawImage(s.dark, -s.px, -s.py); }
+  if (fl) { ctx.globalAlpha = opt.flame * (0.85 + 0.15 * Math.sin(_b.t * 0.6)); paintPart(ctx,s,fl); }
+  if (opt && opt.white) { ctx.globalAlpha = 0.85; paintPart(ctx,s,s.white); }
+  if (group && _b.flashT[group] > 0 && (_b.t & 1)) { ctx.globalAlpha = 0.42; paintPart(ctx,s,s.white); }
+  if (_shadow > 0.01) { ctx.globalAlpha = _shadow; paintPart(ctx,s,s.dark); }
   ctx.restore();
 }
 
@@ -769,7 +770,7 @@ function edge(ctx, s, p, sc, alpha, img = s.edge) {
   if (Math.abs(p.a) > 0.004) ctx.rotate(p.a);
   if (sc !== 1) ctx.scale(sc, sc);
   ctx.globalAlpha = Math.min(1, alpha);
-  ctx.drawImage(img, -s.px, -s.py);
+  paintPart(ctx,s,img);
   ctx.restore();
 }
 
@@ -899,7 +900,7 @@ function drawDebris(ctx, b) {
     ctx.save();
     ctx.translate(Math.round(q.x), Math.round(q.y));
     ctx.rotate(q.a);
-    ctx.drawImage(q.far && s.farImg ? s.farImg : s.img, -s.px, -s.py);
+    paintPart(ctx,s,q.far && s.farImg ? s.farImg : s.img);
     ctx.restore();
   }
 }
