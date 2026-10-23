@@ -10,7 +10,7 @@ import * as player from './player.js';
 import { sfx, fxCall, aimAt } from './boss-util.js';
 import { emit } from './world.js';
 import { DIFFICULTY, SURFACE_Y } from './boss-mudskipper.js';
-import { MBIG } from './boss-mudskipper-attacks.js';
+import { MSTRONG } from './boss-mudskipper-attacks.js';
 
 export const HOP = { hp: [1.4, 2.2], firstAt: 140, g: 0.12, chainGap: 50, wipeBonus: 8000 };
 const ITEMS = ['laser', 'shield', 'wave', 'homing', 'laser', 'shield', 'wave', 'bomb'];
@@ -35,14 +35,14 @@ function spawnPack(world, b) {
 }
 
 export function updateHoppers(world, b) {
-  const active = (b.mode === 'fight' || b.mode === 'crash') && !(b.atk && MBIG.has(b.atk.name));
+  const active = (b.mode === 'fight' || b.mode === 'crash') && !(b.atk && MSTRONG.has(b.atk.name));
   if (active && --b.hopT <= 0) {
     spawnPack(world, b);
     const e = DIFFICULTY[b.phase].hopEvery;
     b.hopT = world.rng.int(e[0], e[1]);
   }
   if (b.chain > 0 && ++b.chainT > HOP.chainGap) b.chain = 0;
-  const calm = b.calmT > 0 || b.mode === 'crash' || (b.atk && MBIG.has(b.atk.name));
+  const calm = b.calmT > 0 || b.mode === 'crash' || (b.atk && MSTRONG.has(b.atk.name));
   const hs = b.hoppers;
   for (let k = hs.length - 1; k >= 0; k--) {
     const h = hs[k];
@@ -97,7 +97,7 @@ function packDone(world, b, pk, h) {
     fxCall('scorePopup', world, Math.max(40, Math.min(W - 60, h.x)), Math.max(20, h.y - 10), bonus);
     dropItem(world, b, h.x, h.y);
     sfx('powerup');
-    emit(world, { type: 'schoolWiped', x: h.x, y: h.y, bonus, size: pk.n });
+    emit(world, { type: 'schoolWiped', x: h.x, y: h.y, bonus, size: pk.n, kind: 'hopper' });
   } else {
     world.score += pk.kills * 50;
     emit(world, { type: 'schoolEscaped', left: pk.n - pk.kills });

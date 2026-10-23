@@ -8,14 +8,23 @@ import * as bullets from './bullets.js';
 import * as player from './player.js';
 import { sfx, fxCall, hurtPlayer, aimAt } from './boss-util.js';
 import { DIFFICULTY, SURFACE_Y, PERCH_Y, HOME_L, HOME_R, stepLeap, splash, toWorld, eyePos } from './boss-mudskipper.js';
+import { spawnFlock } from './boss-mudskipper-gulls.js';
 
 export const MPOOLS = {
-  1: ['lob', 'eyeShot', 'hop'],
-  2: ['lob', 'eyeShot', 'leap', 'dive', 'hop'],
-  3: ['lob', 'eyeShot', 'leap', 'dive', 'doubleLeap', 'shockHop'],
-  4: ['glideLeap', 'mudRain', 'dive', 'eyeShot', 'lob'],
+  1: ['lob', 'eyeShot', 'hop', 'gulls', 'flak', 'skyLeap'],
+  2: ['leap', 'skyLeap', 'dive', 'gulls', 'eyeShot', 'lob', 'hop'],
+  3: ['flak', 'geyser', 'shockHop', 'doubleLeap', 'dive', 'skyLeap', 'gulls'],
+  4: ['glideLeap', 'mudRain', 'flak', 'geyser', 'dive', 'gulls', 'skyLeap'],
+};
+// where each attack applies pressure; the scheduler alternates TOP and LOW beats
+// so the ship has to move vertically through the fight
+export const MTAG = {
+  lob: 'top', flak: 'top', gulls: 'top', skyLeap: 'top', leap: 'top', doubleLeap: 'top', glideLeap: 'top', mudRain: 'top',
+  eyeShot: 'mid', geyser: 'col', hop: 'low', shockHop: 'low', dive: 'low', tidalWave: 'all',
 };
 export const MBIG = new Set(['tidalWave', 'mudRain']);
+// strong attacks: need a quiet screen to start; hoppers don't spawn and gunners hold fire while they run
+export const MSTRONG = new Set(['tidalWave', 'mudRain', 'skyLeap', 'gulls', 'flak', 'geyser']);
 const D = (b) => DIFFICULTY[b.phase];
 // contact extent of the perched body around root x: head side ~84 px, tail side ~86 px (+8 margin)
 export function landing(x, f, k) { return { x, k, l: x - (f > 0 ? 92 : 94), r: x + (f > 0 ? 94 : 92) }; }
@@ -81,7 +90,7 @@ export const MATTACKS = {
       const m = mouth(b), tg = target(world);
       for (let k = 0; k < d.lobN; k++) {
         const off = (k - (d.lobN - 1) / 2) * 26;
-        const T = 52 + k * 6;
+        const T = 66 + k * 7;
         const big = d.shock && k === ((d.lobN - 1) >> 1);
         lob(world, b, atk, m.x, m.y, clamp(tg.x + off, 8, W - 8), tg.y, T, big ? { big: true, shock: true } : {});
       }
@@ -126,6 +135,91 @@ export const MATTACKS = {
     if (atk.L.done && !atk.landed) { atk.landed = atk.t; b.landing = null; shockPair(world, b, b.x, atk); }
     return atk.landed && atk.t >= atk.landed + 16;
   },
+  // a flock of MECH GULLS cruises in along the top and dives one by one
+  gulls(world, b, atk) {
+    if (atk.t === 0) { spawnFlock(world, b, atk); hint(b, atk, 'mudGull', 'Gulls flash cyan and show their dive path: move off it (or shoot them) - stay low'); }
+    b.eyeUpT = 1;
+    if (atk.t === 30 && b.phase >= 2) { const m = mouth(b), tg = target(world); lob(world, b, atk, m.x, m.y, tg.x, tg.y, 70); }
+    return atk.t >= 70;
+  },
+  // SKY LEAP: a high, flat leap that sweeps the TOP band from one side to the other
+  skyLeap(world, b, atk) {
+    const d = D(b);
+    const TELL = d.skyTell, SKY = 34;
+    if (atk.t === 0) {
+      const toLeft = b.home !== 'L';
+      atk.x1 = toLeft ? HOME_L : HOME_R; atk.dir = toLeft ? -1 : 1; b.home = toLeft ? 'L' : 'R';
+      sfx('bossRoar');
+    }
+    if (atk.sx === undefined) atk.sx = b.x;
+    const zl = Math.min(atk.sx, atk.x1) , zr = Math.max(atk.sx, atk.x1);
+    // rise/drop zones (full height near the start and landing points) + the flat top band
+    b.skyBand = { y1: SKY + 50, k: Math.min(1, atk.t / TELL), on: atk.st !== 'land', zones: [[atk.sx - 96, atk.sx + 96], [atk.x1 - 96, atk.x1 + 96]] };
+    hint(b, atk, 'mudSky', 'Sky leap: drop below the striped band and keep away from both striped ends', [{ x: zl + 100, y: SKY + 58, w: zr - zl - 200, h: SURFACE_Y - 16 - (SKY + 58) }]);
+    if (atk.t < TELL) { b.y += 0.4; b.eyeUpT = 0; b.jawT = 1; return false; }
+    if (!atk.st) { atk.st = 'rise'; atk.t0 = atk.t; atk.y0 = b.y; atk.x0 = b.x; }
+    const px = b.x, py = b.y;
+    if (atk.st === 'rise') {
+      const u = Math.min(1, (atk.t - atk.t0) / 20);
+      b.y = atk.y0 + (SKY - atk.y0) * (1 - (1 - u) * (1 - u)); b.x = atk.x0 + atk.dir * 30 * u;
+      if (u >= 1) atk.st = 'fly';
+    } else if (atk.st === 'fly') {
+      b.x += atk.dir * d.skySpd; b.y = SKY + Math.sin(atk.t * 0.2) * 2;
+      if (atk.dir < 0 ? b.x <= atk.x1 + 40 : b.x >= atk.x1 - 40) { atk.st = 'drop'; atk.t0 = atk.t; atk.y0 = b.y; atk.x0 = b.x; }
+    } else if (atk.st === 'drop') {
+      const u = Math.min(1, (atk.t - atk.t0) / 22);
+      b.y = atk.y0 + (PERCH_Y - atk.y0) * u * u; b.x = atk.x0 + (atk.x1 - atk.x0) * u;
+      if (u >= 1) { atk.st = 'land'; atk.t0 = atk.t; splash(b, b.x, 34, world); shockPair(world, b, b.x, atk); fxCall('addShake', world, 4); sfx('explodeS'); }
+    }
+    b.vx = b.x - px; b.vy = b.y - py;
+    b.f = atk.dir < 0 ? 1 : -1;
+    b.a += (Math.max(-0.6, Math.min(0.6, Math.atan2(-b.vy, Math.abs(b.vx) + 0.5) * 0.7)) - b.a) * 0.3;
+    b.air = atk.st === 'rise' || atk.st === 'fly' || atk.st === 'drop';
+    if (atk.st === 'land') { b.air = false; b.skyBand = null; return atk.t >= atk.t0 + 20; }
+    return false;
+  },
+  // FLAK: shells lobbed to the ceiling that burst into falling shrapnel at their apex
+  flak(world, b, atk) {
+    const d = D(b);
+    b.jawT = atk.t < 24 + d.flakN * 18 ? 1 : 0;
+    if (atk.t === 0) hint(b, atk, 'mudFlak', 'Shells burst at the top into falling shrapnel: stay low and step out from under the blinking shell');
+    if (atk.t >= 24 && (atk.t - 24) % 18 === 0 && (atk.t - 24) / 18 < d.flakN) {
+      const m = mouth(b), tg = target(world), g = d.grav;
+      const k = (atk.t - 24) / 18;
+      const tx = Math.max(16, Math.min(W - 16, tg.x + (k % 2 ? 36 : -24)));
+      const vy0 = -Math.sqrt(2 * g * Math.max(20, m.y - 16)), ta = -vy0 / g;
+      b.mud.push({ x: m.x, y: m.y, vx: (tx - m.x) / ta, vy: vy0, g, r: 5, cause: 'mudFlak', atk: atk.id, flak: true, big: true });
+      sfx('missile');
+    }
+    return atk.t >= 24 + d.flakN * 18 + 50;
+  },
+  // GEYSERS: water columns erupt from the surface to the ceiling; thread the gaps
+  geyser(world, b, atk) {
+    const d = D(b);
+    const TELL = d.geyTell, ON = 54;
+    if (atk.t === 0) {
+      const n = d.geyN, xs = [];
+      const p = world.player, px = p && p.alive ? p.x : 80;
+      xs.push(Math.max(30, Math.min(W - 30, px + world.rng.range(-10, 10)))); // one right under the ship
+      let tries = 0;
+      while (xs.length < n && tries++ < 40) { const x = world.rng.range(24, W - 24); if (xs.every((q) => Math.abs(q - x) > 62)) xs.push(x); }
+      atk.cols = xs.sort((a, c) => a - c);
+      b.jawT = 1; sfx('rumble');
+    }
+    const k = atk.t / TELL;
+    b.geysers = atk.cols.map((x) => ({ x, state: atk.t < TELL ? 'tell' : atk.t < TELL + ON ? 'on' : 'off', k: Math.min(1, k), left: Math.max(0, TELL - atk.t), atk: atk.id }));
+    const rects = [], xs = [-12, ...atk.cols, W + 12];
+    for (let i = 0; i + 1 < xs.length; i++) rects.push({ x: xs[i] + 18, y: 0, w: xs[i + 1] - xs[i] - 36, h: H });
+    hint(b, atk, 'mudGeyser', 'Boiling spots become water columns: move into a gap between them', rects);
+    if (atk.t === TELL) { fxCall('addShake', world, 4); sfx('explodeL'); for (const x of atk.cols) splash(b, x, 24, world, 5); }
+    if (atk.t >= TELL && atk.t < TELL + ON) {
+      const hb = player.playerHitbox(world);
+      if (hb) for (const x of atk.cols) if (Math.abs(hb.x - x) < 11 + hb.r && hb.y < SURFACE_Y + 10) { hurtPlayer(world, { kind: 'bullet', cause: 'mudGeyser', atk: atk.id, x, y: hb.y }); break; }
+    }
+    if (atk.t === 20) b.jawT = 0;
+    if (atk.t >= TELL + ON + 10) { b.geysers = null; return true; }
+    return false;
+  },
   // big parabolic leap to the other side (lands BEHIND the player on the left); spray on landing
   leap(world, b, atk) {
     const d = D(b);
@@ -137,7 +231,7 @@ export const MATTACKS = {
       b.jawT = 1;
       sfx('bossRoar');
     }
-    if (atk.t === 0) atk.tell = b.home === 'R' && atk.L.x0 < 200 ? 42 : 26; // returning from the left perch: longer tell
+    if (atk.t === 0) atk.tell = b.home === 'R' && atk.L.x0 < 200 ? 44 : 34; // returning from the left perch: longer tell
     if (atk.t < atk.tell) {
       b.y += 0.45; b.a *= 0.9; b.eyeUpT = 0;
       b.landing = landing(atk.L.x1, atk.L.x1 < atk.L.x0 ? 1 : -1, 0);
@@ -211,7 +305,7 @@ export const MATTACKS = {
         atk.L = { x0: atk.tx, y0: SURFACE_Y + 52, x1: toRight ? HOME_R : HOME_L, y1: PERCH_Y, h: 72, T: 78, t: 0 };
         b.home = toRight ? 'R' : 'L';
         splash(b, atk.tx, 70, world, 5);
-        spray(world, b, atk, atk.tx, 4 + b.phase);
+        spray(world, b, atk, atk.tx, 5 + b.phase);
         fxCall('addShake', world, 6); sfx('explodeL');
       }
     } else if (atk.st === 'burst') {
@@ -344,6 +438,12 @@ export function updateHazards(world, b) {
     const wasAbove = q.y < SURFACE_Y;
     if (q.y >= SURFACE_Y) { q.vx *= 0.94; q.vy = Math.min(q.vy + q.g * 0.4, 1.2); } else q.vy += q.g;
     q.x += q.vx; q.y += q.vy;
+    if (q.flak && q.vy >= 0) {
+      const n = D(b).flakShards;
+      for (let k = 0; k < n; k++) b.mud.push({ x: q.x, y: q.y, vx: q.vx * 0.3 + (k - (n - 1) / 2) * 0.62, vy: 0.2 + Math.abs(k - (n - 1) / 2) * 0.12, g: q.g, r: 3, cause: 'mudFlak', atk: q.atk });
+      fxCall('explode', world, q.x, q.y, 'small', { debris: false });
+      m.splice(i, 1); continue;
+    }
     if (wasAbove && q.y >= SURFACE_Y && q.vy > 0) {
       for (let k = 0; k < 5; k++) b.splash.push({ x: q.x, y: SURFACE_Y - 1, vx: world.fxRng.range(-1, 1), vy: world.fxRng.range(-2.2, -0.8), t: 0, c: k & 1 });
       if (q.shock) { const d = D(b); if (d.shock) b.shocks.push({ x: q.x - 8, vx: -d.shockSpd * 0.8, atk: q.atk, t: 0 }, { x: q.x + 8, vx: d.shockSpd * 0.8, atk: q.atk, t: 0 }); }
@@ -361,6 +461,8 @@ export function updateHazards(world, b) {
   }
   if (!b.atk || b.atk.name !== 'tidalWave') b.wave = null;
   if (!b.atk || b.atk.name !== 'mudRain') b.rain = null;
+  if (!b.atk || b.atk.name !== 'skyLeap') b.skyBand = null;
+  if (!b.atk || b.atk.name !== 'geyser') b.geysers = null;
   if (!b.atk || b.atk.name !== 'dive') { b.wake = null; b.boil = null; }
 }
 
@@ -390,6 +492,18 @@ export function drawHazards(ctx, world, b, S, layer) {
       ctx.fillStyle = '#a8f6ff';
       for (const ex of [b.landing.l, b.landing.r - 6]) { ctx.fillRect(Math.round(ex), SURFACE_Y - 7, 6, 1); ctx.fillRect(Math.round(ex) + (ex === b.landing.l ? 0 : 5), SURFACE_Y - 12, 1, 6); }
       ctx.globalAlpha = 1;
+    }
+    if (b.skyBand && b.skyBand.on) {
+      ctx.globalAlpha = 0.35 * b.skyBand.k; ctx.fillStyle = '#05020c'; ctx.fillRect(0, 0, W, 6);
+      hatch(ctx, 0, 0, W, b.skyBand.y1, b.t, '#c8faff', 0.18 + 0.2 * b.skyBand.k * ((b.t >> 3) & 1 ? 1 : 0.5));
+      for (const [a0, a1] of b.skyBand.zones) hatch(ctx, Math.max(0, a0), b.skyBand.y1, Math.min(W, a1) - Math.max(0, a0), SURFACE_Y - b.skyBand.y1, b.t, '#c8faff', 0.14 + 0.12 * b.skyBand.k);
+    }
+    if (b.geysers) for (const gy of b.geysers) {
+      if (gy.state === 'tell') {
+        hatch(ctx, gy.x - 11, SURFACE_Y - (SURFACE_Y - 4) * gy.k, 22, (SURFACE_Y - 4) * gy.k, b.t, '#c8faff', 0.3 + 0.2 * ((b.t >> 2) & 1));
+        ctx.fillStyle = '#e8ffff';
+        for (let i = 0; i < 4; i++) ctx.fillRect(Math.round(gy.x - 8 + ((b.t * 3 + i * 5) % 16)), SURFACE_Y - 2 - ((b.t + i * 3) % 5), 2, 2);
+      }
     }
     if (b.arcPreview && (b.t >> 2) & 1) {
       const L = b.arcPreview;
@@ -433,6 +547,26 @@ export function drawHazards(ctx, world, b, S, layer) {
       const x = Math.round(q.tx), y = Math.round(q.ty);
       ctx.fillRect(x - 3, y, 2, 1); ctx.fillRect(x + 2, y, 2, 1); ctx.fillRect(x, y - 3, 1, 2); ctx.fillRect(x, y + 2, 1, 2);
     }
+  }
+  // geyser columns
+  if (b.geysers) for (const gy of b.geysers) {
+    if (gy.state !== 'on') continue;
+    const x = Math.round(gy.x);
+    ctx.fillStyle = '#1e5a82'; ctx.fillRect(x - 11, 0, 22, SURFACE_Y + 4);
+    ctx.fillStyle = '#3a8cbc'; ctx.fillRect(x - 7, 0, 14, SURFACE_Y + 4);
+    ctx.fillStyle = '#9fe0f6'; ctx.fillRect(x - 3, 0, 5, SURFACE_Y + 4);
+    ctx.fillStyle = '#ffffff';
+    for (let y = (b.t * 5) % 10; y < SURFACE_Y; y += 10) ctx.fillRect(x - 9 + ((y * 7) % 15), y, 2, 3);
+    ctx.fillRect(x - 13, SURFACE_Y - 3, 26, 3);
+  }
+  // flak shells blink before bursting
+  for (const q of b.mud) {
+    if (!q.flak) continue;
+    const left = q.vy < 0 ? -q.vy / q.g : 0; // frames until the burst
+    ctx.fillStyle = '#9ef6ff';
+    for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2 + b.t * 0.2; ctx.fillRect(Math.round(q.x + Math.cos(a) * 8), Math.round(q.y + Math.sin(a) * 8), 1, 1); }
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(q.x) - 1, Math.round(q.y) - 8, 2, 3); // fuse spark
+    if (left < 20 && (b.t >> (left < 8 ? 0 : 1)) & 1) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(S.tellGlow, Math.round(q.x) - 8, Math.round(q.y) - 8); ctx.globalCompositeOperation = 'source-over'; }
   }
   // shockwaves: foam crests running along the surface
   for (const q of b.shocks) {

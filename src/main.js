@@ -22,8 +22,8 @@ const params = new URLSearchParams(location.search);
 const shotDef = params.get('shot') ? SHOTS.find((s) => s.id === params.get('shot')) : null;
 const headless = params.has('headless');
 const botParam = params.get('bot');
-const useBot = botParam === '1' || botParam === '2' || (shotDef && shotDef.bot);
-const botProfile = botParam === '2' ? 'human' : 'perfect';
+const useBot = botParam === '1' || botParam === '2' || botParam === '3' || botParam === '4' || botParam === '5' || (shotDef && shotDef.bot);
+const botProfile = botParam === '2' ? 'human' : botParam === '3' ? 'camper' : botParam === '4' ? 'midcamper' : botParam === '5' ? 'skimcamper' : 'perfect';
 
 const display = document.getElementById('screen');
 const dctx = display.getContext('2d');

@@ -37,12 +37,23 @@ export function updateEvents(world) {
       case 'schoolEscaped':
         S.chainT = Math.max(S.chainT, CHAIN_GAP); // let the readout fade now
         break;
+      case 'skimBonus': {
+        // zone G: flying low over the water pays out; popup just above the ship
+        const p = world.player;
+        const v = Math.max(0, Number(e.value) || 0);
+        const x = p && Number.isFinite(p.x) ? p.x + 6 : Number(e.x) || W / 2;
+        const y = p && Number.isFinite(p.y) ? p.y - 12 : Number(e.y) || H / 2;
+        S.popups.push({ text: `SKIM +${v}`, x, y, t: 0, life: 40, style: 'cyan' });
+        S.skimT = 0;
+        if (!S.skimHintShown) { S.skimHintShown = true; S.hint = { t: 0, msg: 'FLY LOW OVER THE WATER: SKIM BONUS' }; }
+        break;
+      }
       case 'chainBreak':
         S.chainT = Math.max(S.chainT, CHAIN_GAP + CHAIN_FADE - 18); // quick fade
         break;
       case 'schoolWiped': {
         const py = world.player ? world.player.y : H / 2;
-        S.banners.push({ kind: 'wipe', t: 0, life: 52, bonus: Number(e.bonus) || 0, size: Number(e.size) || 0, y: py < H / 2 ? Math.round(H * 0.66) : Math.round(H * 0.2) });
+        S.banners.push({ kind: 'wipe', label: e.kind === 'gull' ? 'FLOCK WIPED!' : 'SCHOOL WIPED!', t: 0, life: 52, bonus: Number(e.bonus) || 0, size: Number(e.size) || 0, y: py < H / 2 ? Math.round(H * 0.66) : Math.round(H * 0.2) });
         if (S.banners.length > 3) S.banners.shift();
         break;
       }
@@ -108,6 +119,7 @@ export function updateEvents(world) {
     }
   }
   S.chainT++;
+  S.skimT = (S.skimT ?? 999) + 1;
   if (S.chainPop > 0) S.chainPop--;
   if (S.gillFlash > 0) S.gillFlash--;
   for (let i = S.banners.length - 1; i >= 0; i--) if (++S.banners[i].t > S.banners[i].life) S.banners.splice(i, 1);
@@ -193,6 +205,7 @@ export function drawEvents(ctx, world) {
   const S = world.hudState && world.hudState.ev;
   if (!S) return;
   drawChain(ctx, S, world);
+  drawSkim(ctx, S, world);
   for (const p of S.popups) {
     const k = p.t / p.life;
     const a = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
@@ -343,7 +356,7 @@ function drawWipe(ctx, b, world) {
   const cx = Math.round(W * 0.56);
   const style = t < 10 && (t & 2) ? 'hot' : 'gold';
   if (t < 4) { ctx.fillStyle = `rgba(255,240,200,${0.18 * (1 - t / 4)})`; ctx.fillRect(0, b.y - 6, W, 34); }
-  drawBig(ctx, 'SCHOOL WIPED!', cx, b.y, { style, scale: 2, gap: 2, sx, sy, alpha: a });
+  drawBig(ctx, b.label || 'SCHOOL WIPED!', cx, b.y, { style, scale: 2, gap: 2, sx, sy, alpha: a });
   if (t >= 4 && b.bonus > 0) drawText(ctx, `BONUS ${b.bonus}`, cx, b.y + 18, { style: 'gold', align: 'center', alpha: a });
 }
 
@@ -488,4 +501,23 @@ export function drawEyeTracker(ctx, world, t) {
       for (let q = 0; q < 5; q++) { ctx.fillRect(x + 1 + q, y + 1 + q, 1, 1); ctx.fillRect(x + 5 - q, y + 1 + q, 1, 1); }
     }
   }
+}
+
+// subtle teal glow on the water just under the ship while a skim streak continues
+function drawSkim(ctx, S, world) {
+  if (!(S.skimT < 110)) return;
+  const p = world.player;
+  if (!p || p.alive === false || !Number.isFinite(p.x)) return;
+  const a = (S.skimT < 90 ? 1 : (110 - S.skimT) / 20) * (0.55 + 0.25 * Math.sin((world.frame || 0) * 0.3));
+  let sy = p.y + 8;
+  try { const m = typeof bossMod.current === 'function' ? bossMod.current(world) : null; if (m && Number.isFinite(m.SURFACE_Y)) sy = m.SURFACE_Y; } catch (e) { /* guard */ }
+  if (sy - p.y > 30 || sy < p.y) sy = p.y + 8; // only meaningful when right above the surface
+  const x = Math.round(p.x - 14), y = Math.round(sy);
+  ctx.fillStyle = `rgba(120,255,230,${(0.5 * a).toFixed(2)})`;
+  ctx.fillRect(x, y, 30, 1);
+  ctx.fillStyle = `rgba(200,255,250,${(0.8 * a).toFixed(2)})`;
+  ctx.fillRect(x + 8, y, 14, 1);
+  ctx.fillStyle = `rgba(120,255,230,${(0.22 * a).toFixed(2)})`;
+  ctx.fillRect(x + 4, y - 1, 22, 1);
+  ctx.fillRect(x + 4, y + 1, 22, 1);
 }

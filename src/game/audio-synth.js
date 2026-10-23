@@ -912,6 +912,58 @@ export const SFX = {
     boom(E, out, t + d * 0.7, 1.4, 900, 45, 0.9);
     duckLight(E, t, d);
   }],
+  // zone G extras
+  skim: [0.25, (E, out, t, value = 500) => {
+    // short rising two-note chime; pitch climbs with the bonus value (capped)
+    const k = Math.max(0, Math.min(1, (Number(value) - 500) / 1000));
+    const base = 84 + Math.round(k * 7);
+    VOICES.bell(E, out, t, base, 0.12, 0.7, -0.2);
+    VOICES.bell(E, out, t + 0.06, base + 7, 0.15, 0.6, 0.2);
+  }],
+  gull: [0.2, (E, out, t) => {
+    // robotic gull cry: square chirp bending down with fast vibrato
+    const o = osc(E, 'square', 1500, t, t + 0.35);
+    o.frequency.setValueAtTime(1500, t);
+    o.frequency.linearRampToValueAtTime(2100, t + 0.06);
+    o.frequency.exponentialRampToValueAtTime(900, t + 0.3);
+    const v = osc(E, 'sine', 32, t, t + 0.35);
+    const vg = gain(E, 120);
+    chain_(v, vg); vg.connect(o.frequency);
+    const g = gain(E);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.06, t + 0.02);
+    g.gain.linearRampToValueAtTime(0, t + 0.32);
+    chain_(o, filt(E, 'bandpass', 1600, 2), g, out);
+  }],
+  geyser: [0.5, (E, out, t) => {
+    // rumbling eruption: low rumble into a hissing column
+    SFX.rumble[1](E, out, t);
+    const d = 1.4, t1 = t + 0.35;
+    const n = noise(E, t1, t1 + d);
+    const bp = filt(E, 'bandpass', 900, 0.8);
+    bp.frequency.setValueAtTime(600, t1);
+    bp.frequency.exponentialRampToValueAtTime(3500, t1 + 0.3);
+    const g = gain(E);
+    g.gain.setValueAtTime(0, t1);
+    g.gain.linearRampToValueAtTime(0.3, t1 + 0.08);
+    g.gain.setTargetAtTime(0, t1 + 0.4, 0.3);
+    chain_(n, bp, g, out);
+    send(E, g, 0.3);
+  }],
+  flak: [0.06, (E, out, t) => {
+    // flak burst: short bright pop + tiny noise crack
+    const n = noise(E, t, t + 0.12);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.28, t);
+    g.gain.setTargetAtTime(0, t, 0.02);
+    chain_(n, filt(E, 'bandpass', 1400, 1.2), g, out);
+    const o = osc(E, 'sine', 300, t, t + 0.1);
+    o.frequency.exponentialRampToValueAtTime(80, t + 0.08);
+    const og = gain(E);
+    og.gain.setValueAtTime(0.3, t);
+    og.gain.setTargetAtTime(0, t, 0.025);
+    chain_(o, og, out);
+  }],
   // continue countdown beep
   count: [0.2, (E, out, t) => {
     const o = osc(E, 'square', 880, t, t + 0.12);

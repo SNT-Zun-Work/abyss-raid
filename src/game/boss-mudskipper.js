@@ -21,7 +21,9 @@ import * as player from './player.js';
 import { sfx, fxCall, hurtPlayer } from './boss-util.js';
 import { emit } from './world.js';
 import { getMudSprites } from './boss-mudskipper-parts.js';
-import { MATTACKS, MPOOLS, MBIG, updateHazards, drawHazards } from './boss-mudskipper-attacks.js';
+import { MATTACKS, MPOOLS, MBIG, MSTRONG, MTAG, updateHazards, drawHazards } from './boss-mudskipper-attacks.js';
+import { initGulls, updateGulls, drawGulls, hitGull, damageGull, killAllGulls, GULL_TELL } from './boss-mudskipper-gulls.js';
+const bz = (a, c, e, u) => (1 - u) * (1 - u) * a + 2 * (1 - u) * u * c + u * u * e;
 import { initHoppers, updateHoppers, drawHoppers, hitHopper, damageHopper, hopperBodyHit, killAllHoppers } from './boss-mudskipper-hoppers.js';
 
 export const ZONE_INFO = { letter: 'G', name: 'PERIOPHTHALMUS', title: 'AMPHIBIOUS ASSAULT CARRIER', area: 'SUNSET TIDELANDS' };
@@ -37,13 +39,13 @@ const P2_FRAC = 0.7, P3_FRAC = 0.4, P4_FRAC = 0.15;
 //  destroyed eye is rebuilt, blindMult: damage multiplier while crashed.
 export const DIFFICULTY = {
   1: { gap: 54, spd: 1.0, grav: 0.07, dmgTaken: 1.25, eyeHp: 22, eyeRegen: 900, blindMult: 2.5, lobN: 3, lobVolleys: 2, eyeBursts: 2, eyeN: 3,
-       hopEvery: [480, 600], hopN: [6, 8], hopGunners: 0, shock: 0, shockSpd: 2.0, leapT: 96, diveTell: 50 },
-  2: { gap: 40, spd: 1.15, grav: 0.075, dmgTaken: 1.15, eyeHp: 26, eyeRegen: 780, blindMult: 2.2, lobN: 4, lobVolleys: 3, eyeBursts: 3, eyeN: 3,
-       hopEvery: [540, 660], hopN: [7, 9], hopGunners: 1, shock: 0, shockSpd: 2.2, leapT: 90, diveTell: 46 },
-  3: { gap: 28, spd: 1.3, grav: 0.08, dmgTaken: 1.05, eyeHp: 30, eyeRegen: 660, blindMult: 2.0, lobN: 5, lobVolleys: 3, eyeBursts: 3, eyeN: 4,
-       hopEvery: [600, 720], hopN: [8, 10], hopGunners: 2, shock: 1, shockSpd: 2.4, leapT: 90, diveTell: 42 },
-  4: { gap: 26, spd: 1.4, grav: 0.08, dmgTaken: 1.0, eyeHp: 34, eyeRegen: 600, blindMult: 1.8, lobN: 5, lobVolleys: 3, eyeBursts: 3, eyeN: 4,
-       hopEvery: [700, 820], hopN: [8, 10], hopGunners: 2, shock: 1, shockSpd: 2.5, leapT: 110, diveTell: 42,
+       gullN: 5, skyTell: 50, skySpd: 4.2, flakN: 2, flakShards: 5, geyN: 3, geyTell: 54, hopEvery: [480, 600], hopN: [6, 8], hopGunners: 0, shock: 0, shockSpd: 2.0, leapT: 96, diveTell: 50 },
+  2: { gap: 36, spd: 1.2, grav: 0.075, dmgTaken: 1.15, eyeHp: 26, eyeRegen: 780, blindMult: 2.2, lobN: 5, lobVolleys: 3, eyeBursts: 3, eyeN: 3,
+       gullN: 5, skyTell: 46, skySpd: 4.6, flakN: 3, flakShards: 5, geyN: 3, geyTell: 50, hopEvery: [540, 660], hopN: [7, 9], hopGunners: 2, shock: 1, shockSpd: 2.3, leapT: 96, diveTell: 46 },
+  3: { gap: 24, spd: 1.35, grav: 0.08, dmgTaken: 1.05, eyeHp: 30, eyeRegen: 660, blindMult: 2.0, lobN: 6, lobVolleys: 3, eyeBursts: 3, eyeN: 3,
+       gullN: 7, skyTell: 42, skySpd: 5, flakN: 4, flakShards: 6, geyN: 4, geyTell: 46, hopEvery: [600, 720], hopN: [8, 10], hopGunners: 3, shock: 1, shockSpd: 2.8, leapT: 94, diveTell: 42 },
+  4: { gap: 24, spd: 1.45, grav: 0.08, dmgTaken: 1.0, eyeHp: 34, eyeRegen: 600, blindMult: 1.8, lobN: 6, lobVolleys: 3, eyeBursts: 3, eyeN: 3,
+       gullN: 7, skyTell: 40, skySpd: 5.2, flakN: 4, flakShards: 7, geyN: 4, geyTell: 44, hopEvery: [700, 820], hopN: [8, 10], hopGunners: 3, shock: 1, shockSpd: 2.9, leapT: 110, diveTell: 42,
        tideEvery: 3, tideTell: 120, tideSpd: 2.4, tideGap: 46, rainWaves: 3, rainSafe: 26, rainEvery: 80 },
 };
 
@@ -58,6 +60,10 @@ export const CAUSES = {
   mudHopper: { name: 'HOPPER', hint: 'Hoppers leap in arcs: shoot them at the top of the jump or slip under' },
   mudHopShot: { name: 'HOPPER SHOT', hint: 'Glowing hoppers fire once at the top of their leap' },
   mudRain: { name: 'MUD RAIN', hint: 'Stand in a lit column while the mud falls' },
+  mudSky: { name: 'SKY LEAP', hint: 'The top band gets striped before it flies across: drop below the stripes' },
+  mudGull: { name: 'MECH GULL', hint: 'A gull flashes and shows its dive path: sidestep the dotted line, or shoot it first' },
+  mudFlak: { name: 'FLAK SHRAPNEL', hint: 'Blinking shells burst at the top: stay low, away from under them' },
+  mudGeyser: { name: 'GEYSER', hint: 'Boiling spots erupt into columns up to the sky: be in a gap between them' },
   mudTide: { name: 'TIDAL WAVE', hint: 'The striped band is the tunnel in the wave: be inside it when the wave hits' },
 };
 
@@ -81,9 +87,10 @@ export function init(world) {
     eyes: [{ hp: DIFFICULTY[1].eyeHp, state: 'ok', t: 0 }, { hp: DIFFICULTY[1].eyeHp, state: 'ok', t: 0 }],
     atk: null, atkSeq: 0, gap: 40, lastAtk: null, atkCount: 0, calmT: 0, tideFired: false,
     safeHint: null, hazards: [], lasers: [], circles: [], mud: [], shocks: [], splash: [], wave: null, rain: null,
-    landing: null, boil: null, flashT: {}, stunned: false, stunT: 0, stunFrames: 240, debris: [],
+    landing: null, boil: null, flashT: {}, stunned: false, stunT: 0, stunFrames: 240, debris: [], skimT: 0, gulls: [], geysers: null, skyBand: null,
   });
   initHoppers(b);
+  initGulls(b);
   computeCircles(b);
 }
 
@@ -123,7 +130,7 @@ function hittable(b) {
 export function hitTest(world, x, y, r) {
   const b = world.boss;
   if (!b || !b.active) return null;
-  const h = hitHopper(world, x, y, r);
+  const h = hitHopper(world, x, y, r) || hitGull(world, x, y, r);
   if (h) return h;
   if (!hittable(b)) return null;
   for (const c of b.circles) {
@@ -143,7 +150,7 @@ function contactAt(world, x, y, r) {
     if (c.kind === 'eye' || c.kind === 'mouth') continue;
     if (c.y > SURFACE_Y + 4) continue; // submerged parts can't be shot, so they don't kill either
     const rr = c.r * 0.75 + r;
-    if ((x - c.x) ** 2 + (y - c.y) ** 2 < rr * rr) return { kind: 'body', cause: b.air ? 'mudLeap' : b.atk && b.atk.name === 'dive' ? 'mudBurst' : 'mudBody', x: c.x, y: c.y };
+    if ((x - c.x) ** 2 + (y - c.y) ** 2 < rr * rr) return { kind: 'body', cause: b.atk && b.atk.name === 'skyLeap' ? 'mudSky' : b.air ? 'mudLeap' : b.atk && b.atk.name === 'dive' ? 'mudBurst' : 'mudBody', x: c.x, y: c.y };
   }
   return null;
 }
@@ -153,6 +160,7 @@ export function targets(world) {
   const b = world.boss;
   if (!b || !b.active || b.defeated) return [];
   const out = b.hoppers.filter((h) => h.on && h.y < SURFACE_Y).map((h) => ({ x: h.x, y: h.y, kind: 'escort' }));
+  for (const g of b.gulls) if (g.on) out.push({ x: g.x, y: g.y, kind: 'escort' });
   for (const c of b.circles) if ((c.kind === 'eye' || c.kind === 'belly' || c.kind === 'mouth') && c.y < SURFACE_Y) out.push({ x: c.x, y: c.y, kind: c.kind === 'eye' ? 'weak' : c.kind });
   if (!out.some((o) => o.kind !== 'escort') && hittable(b)) { const p = toWorld(b, -40, -4); out.push({ x: p.x, y: p.y, kind: 'body' }); }
   return out;
@@ -161,10 +169,12 @@ export function targets(world) {
 export function applyDamage(world, hit, dmg) {
   const b = world.boss;
   if (!hit || !b) return;
-  if (hit.kind === 'escort') { damageHopper(world, hit, dmg); return; }
+  if (hit.kind === 'escort') { if (hit.gull) damageGull(world, hit, dmg); else damageHopper(world, hit, dmg); return; }
   if (!hittable(b)) return;
   const d = DIFFICULTY[b.phase];
-  const mult = (hit.source === 'burst' ? Math.max(1, hit.mult) : hit.mult ?? 1) * (b.stunned ? d.blindMult : 1) * d.dmgTaken;
+  const sy = hit.sy ?? (world.player ? world.player.y : 0);
+  const below = hit.kind === 'belly' && sy > b.y + 8 ? 1.3 : 1; // the belly is best hit by a shooter below the boss
+  const mult = (hit.source === 'burst' ? Math.max(1, hit.mult) : hit.mult ?? 1) * (b.stunned ? d.blindMult : 1) * d.dmgTaken * below;
   b.flashT[hit.group || 'torso'] = 3;
   if (hit.kind === 'body' || hit.kind === 'tail') {
     if ((b.t & 3) === 0) fxCall('spark', world, hit.x - 2, hit.y, Math.PI + world.fxRng.range(-0.7, 0.7));
@@ -178,6 +188,7 @@ export function applyDamage(world, hit, dmg) {
   // HP gates: no skipping a phase; death only in the final form after the first tidal wave
   const floor = b.phase < 4 || b.mode === 'roar' || !b.tideFired ? 1 : 0;
   b.hp = Math.max(Math.min(b.hp, floor), b.hp - dmg * mult);
+  b.lastDmgT = b.t;
   checkPhase(world);
 }
 
@@ -259,6 +270,7 @@ function startDeath(world) {
   if (b.atk) endAttack(b);
   clearField(world, b);
   killAllHoppers(world, b);
+  killAllGulls(world, b);
   b.vy = -4.5; b.vx = b.f * -0.6; b.air = true;
   world.hitstop = Math.max(world.hitstop, 30);
   world.flash = Math.max(world.flash, 0.7);
@@ -366,14 +378,27 @@ export function update(world) {
   computeCircles(b);
   updateHazards(world, b);
   updateHoppers(world, b);
+  updateGulls(world, b);
+  skim(world, b);
   updateCosmetics(b);
 
   // bots: gravity projectiles and wave points
   b.hazards.length = 0;
-  for (const m of b.mud) b.hazards.push({ x: m.x, y: m.y, vx: m.vx, vy: m.vy, r: m.r, g: m.g, cause: m.cause });
-  for (const s of b.shocks) b.hazards.push({ x: s.x, y: SURFACE_Y - 5, vx: s.vx, vy: 0, r: 8, g: 0, cause: 'mudShock' });
-  for (const h of b.hoppers) if (h.on && h.air) b.hazards.push({ x: h.x, y: h.y, vx: h.vx, vy: h.vy, r: 6, g: h.g, cause: 'mudHopper' });
-  if (b.wave && b.wave.state === 'run') for (let y = 4; y < H; y += 12) if (y < b.wave.g0 - 4 || y > b.wave.g1 + 4) for (const dx of [8, 28, 48]) b.hazards.push({ x: b.wave.x + dx, y, vx: -b.wave.spd, vy: 0, r: 10, g: 0, cause: 'mudTide' });
+  for (const m of b.mud) b.hazards.push({ x: m.x, y: m.y, vx: m.vx, vy: m.vy, r: m.r, g: m.g, cause: m.cause, atk: m.atk });
+  for (const s of b.shocks) b.hazards.push({ x: s.x, y: SURFACE_Y - 5, vx: s.vx, vy: 0, r: 8, g: 0, cause: 'mudShock', atk: s.atk });
+  for (const h of b.hoppers) if (h.on && h.air) b.hazards.push({ x: h.x, y: h.y, vx: h.vx, vy: h.vy, r: 6, g: h.g, cause: 'mudHopper', atk: 0 });
+  for (const g of b.gulls) {
+    if (!g.on || g.harmless) continue;
+    b.hazards.push({ x: g.x, y: g.y, vx: g.vx, vy: g.vy, r: 10, g: 0, cause: 'mudGull', atk: g.atk });
+    // committed dive path: samples with the frame at which the gull will be there
+    if ((g.st === 'tell' || g.st === 'dive') && g.path) {
+      const P = g.path, t0 = g.st === 'tell' ? GULL_TELL - g.t : -g.t;
+      for (let k = 2; k <= 20; k += 2) { const u = k / 20, when = t0 + u * P.T; if (when < 0) continue; b.hazards.push({ x: bz(P.ax, P.cx, P.ex, u), y: bz(P.ay, P.cy, P.ey, u), vx: 0, vy: 0, r: 9, g: 0, cause: 'mudGull', atk: g.atk, pending: true, t: Math.round(when) }); }
+    }
+  }
+  if (b.geysers) for (const gy of b.geysers) if (gy.state !== 'off') for (let y = 6; y < SURFACE_Y; y += 14) b.hazards.push({ x: gy.x, y, vx: 0, vy: 0, r: 12, g: 0, cause: 'mudGeyser', atk: gy.atk, pending: gy.state === 'tell', t: gy.state === 'tell' ? gy.left : 0 });
+  if (b.skyBand && b.atk && b.atk.st && b.atk.st !== 'land') for (let x = -60; x <= 80; x += 20) { const p = toWorld(b, x, 0); b.hazards.push({ x: p.x, y: p.y, vx: b.vx, vy: b.vy, r: 30, g: 0, cause: 'mudSky', atk: b.atk.id }); }
+  if (b.wave && b.wave.state === 'run') for (let y = 4; y < H; y += 12) if (y < b.wave.g0 - 4 || y > b.wave.g1 + 4) for (const dx of [8, 28, 48]) b.hazards.push({ x: b.wave.x + dx, y, vx: -b.wave.spd, vy: 0, r: 10, g: 0, cause: 'mudTide', atk: b.wave.atk });
 
   if (b.mode !== 'death' && b.mode !== 'entry' && b.mode !== 'roar') {
     const hb = player.playerHitbox(world);
@@ -421,6 +446,24 @@ export function stepLeap(world, b, L) {
   return L.done;
 }
 
+// SKIM BONUS: flying low just above the water pays score (risk: shockwaves, hoppers)
+const SKIM_CAP = 10; // payouts per phase: a lure, not a farm
+function skim(world, b) {
+  const p = world.player;
+  if (b.mode !== 'fight' && b.mode !== 'crash') return;
+  const live = b.t - (b.lastDmgT ?? -999) < 180 && hittable(b);
+  const paid = (b.skimPaid || (b.skimPaid = {}))[b.phase] || 0;
+  if (p && p.alive && p.y > SURFACE_Y - 22 && p.y < SURFACE_Y - 2 && live && paid < SKIM_CAP) {
+    if (++b.skimT % 90 === 0) {
+      b.skimPaid[b.phase] = paid + 1;
+      const v = 500 + 250 * Math.min(4, b.skimT / 90 - 1);
+      world.score += v;
+      fxCall('scorePopup', world, p.x, p.y - 12, v);
+      emit(world, { type: 'skimBonus', x: p.x, y: p.y, value: v });
+    }
+  } else b.skimT = 0;
+}
+
 function regenEyes(world, b) {
   const d = DIFFICULTY[b.phase];
   b.eyes.forEach((e, i) => {
@@ -436,9 +479,16 @@ function pickAttack(world, b) {
   if (b.phase === 4 && d.tideEvery && b.atkCount % d.tideEvery === 0 && b.lastAtk !== 'tidalWave') name = 'tidalWave';
   else if (b.home === 'L' && b.leftAtks >= 1) name = b.phase === 4 ? 'glideLeap' : 'leap';
   else if (b.home === 'L') name = world.rng.pick(['lob', 'eyeShot']);
-  else name = world.rng.pick(MPOOLS[b.phase].filter((n) => n !== b.lastAtk));
+  else {
+    const lastTag = MTAG[b.lastAtk] || 'mid';
+    let pool = MPOOLS[b.phase].filter((n) => n !== b.lastAtk);
+    const flip = pool.filter((n) => (lastTag === 'top' ? MTAG[n] !== 'top' : lastTag === 'low' ? MTAG[n] === 'top' || MTAG[n] === 'col' : true));
+    if (flip.length) pool = flip;
+    name = world.rng.pick(pool);
+  }
   b.leftAtks = b.home === 'L' ? (b.leftAtks || 0) + 1 : 0;
-  if (MBIG.has(name) && world.eShots.length + b.mud.length >= 12) { b.gap = 20; return; }
+  if (MSTRONG.has(name) && world.eShots.length + b.mud.length >= 12) { b.gap = 20; return; }
+  if (MTAG[name] === 'top' && (b.gulls.some((g) => g.st === 'tell' || g.st === 'dive') || b.mud.some((m) => m.cause === 'mudFlak'))) { b.gap = 16; return; }
   b.atkSeq++;
   b.atk = { name, t: 0, id: b.atkSeq };
   b.lastAtk = name;
@@ -580,6 +630,7 @@ export function draw(ctx, world) {
     ctx.globalAlpha = 1;
   }
   drawHoppers(ctx, world, b, S);
+  drawGulls(ctx, world, b, S);
   drawHazards(ctx, world, b, S, 'over');
   for (const q of b.splash) {
     ctx.fillStyle = q.c ? '#ffffff' : '#9fe6ff';

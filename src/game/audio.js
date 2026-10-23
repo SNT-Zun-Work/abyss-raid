@@ -181,6 +181,7 @@ function handleEvents(world) {
     try {
       switch (e.type) {
         case 'schoolWiped': sfx('wipe'); break;
+        case 'skimBonus': sfx('skim', Number(e.value) || 500); break;
         case 'gillKill': sfx('gillTear'); break;
         case 'gillRegrow': sfx('regrow'); break;
         case 'stunStart': sfx('stun'); duckMusic(E, ctx.currentTime, (Number(e.frames) || 240) / 60); break;

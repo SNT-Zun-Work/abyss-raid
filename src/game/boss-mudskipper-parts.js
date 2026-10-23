@@ -166,6 +166,19 @@ function hopperDef() {
   ];
   return def(prims, [{ k: 'fill', x: 3, y: -9, rx: 1, ry: 1, op: { c: '#ff8a3a' } }, { k: 'fill', x: 6, y: -8, rx: 1, ry: 1, op: { c: '#ff8a3a' } }, LN([[-16, 3], [-6, 3]], { dk: 3 }), DOT(0, -2, { m: 'redglow', i: 2 })]);
 }
+// mech gull (~26 px wingspan), two wing frames: up / down
+function gullDef(up) {
+  const wy = up ? -13 : 10;
+  const prims = [
+    P([[-2, -1], [9, wy * 0.6], [18, wy], [12, wy * 0.4], [2, 2]], 'hull', { bev: 0.9, lum: -0.1 }),
+    C(-8, 0, 8, 1, 3.4, 2.2, 'hull', { lum: 0.1 }),
+    P([[-14, 0], [-9, -2], [-8, 2]], 'brass', { bev: 0.6 }),
+    P([[8, 0], [14, -3], [14, 3]], 'iron', { bev: 0.6 }),
+    P([[-2, 1], [-9, wy * 0.6 + (up ? 0 : 2)], [-15, wy], [-6, wy * 0.3], [0, 2]], 'armor', { bev: 0.9, lum: -0.05 }),
+    E(-6, -1, 1.4, 1.4, 'redglow'),
+  ];
+  return def(prims, [DOT(2, 0, { m: 'redglow', i: 2 })]);
+}
 function mudBallDef(r) {
   return def([E(0, 0, r, r, 'iron', { lum: -0.12 }), E(-0.5, -0.5, r * 0.5, r * 0.5, 'redglow', { lum: -0.25 })], [DOT(-r * 0.5, -r * 0.5, { lt: 2 })]);
 }
@@ -187,6 +200,8 @@ export function getMudSprites() {
   S.tailA = buildPart(tailADef(), { red: true });
   S.tailB = buildPart(tailBDef(), { red: true });
   S.hopper = buildPart(hopperDef());
+  S.gull = [buildPart(gullDef(true)), buildPart(gullDef(false))];
+  S.flak = buildPart(mudBallDef(5));
   S.mud = buildPart(mudBallDef(4));
   S.mudBig = buildPart(mudBallDef(6));
   S.eyeGlow = buildGlow(10, [255, 50, 30], 4);

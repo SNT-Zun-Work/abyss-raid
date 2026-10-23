@@ -17,6 +17,12 @@ for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) DIRS.push([dx,
 
 const PROFILES = {
   perfect: { delay: 0, lagComp: 1, horizon: [4, 8, 14, 20], misread: 0, safeDelay: 0, burstChance: 1, laserAim: true },
+  // 'camper' = the degenerate strategy the owner found in ZONE G: stay in the top band and only
+  // dodge sideways (human reaction). A good design makes this clearly worse than playing the field.
+  camper: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false, band: [12, 46] },
+  // band campers for other lanes (Codex r8: check for a new degenerate lane)
+  midcamper: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false, band: [70, 105] },
+  skimcamper: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false, band: [120, 132] },
   human: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false },
 };
 
@@ -148,7 +154,12 @@ export function botInput(world, profileName = 'perfect') {
     }
     const nx = p.x + dx * step * 6, ny = p.y + dy * step * 6;
     let pref = Math.abs(ny - targetY) * 0.6 + Math.abs(nx - 70) * 0.3;
-    if (ny < 20 || ny > H - 16) pref += 30;
+    if (prof.band) {
+      const [lo, hi] = prof.band, mid = (lo + hi) / 2;
+      const out = ny < lo ? lo - ny : ny > hi ? ny - hi : 0;
+      pref = Math.abs(nx - 120) * 0.2 + (out ? 400 + out * 20 : Math.abs(ny - mid) * 0.4);
+    }
+    else if (ny < 20 || ny > H - 16) pref += 30;
     let item = null, id2 = 1e9;
     for (const it of world.items || []) {
       const d2 = (it.x - p.x) ** 2 + (it.y - p.y) ** 2;
