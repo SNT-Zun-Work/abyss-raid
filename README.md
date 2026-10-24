@@ -16,4 +16,4 @@ original procedural or AI-generated artwork; no assets from any commercial game 
 Privacy: anonymous play counts (page views and game events such as start / clear / game over)
 are collected with GoatCounter, without cookies or personal data.
 
-Version: v0.10
+Version: v0.10.1
