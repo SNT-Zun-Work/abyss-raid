@@ -14,6 +14,7 @@
 //   burstStock/burstMax, burst (active Abyss Burst | null)
 import { W, H } from '../config.js';
 import { clamp, swapRemove, TAU } from '../core/util.js';
+import { track } from '../core/analytics.js';
 import * as fx from './fx.js';
 import { emit } from './world.js';
 import * as audio from './audio.js';
@@ -28,27 +29,44 @@ export const SHIELD_MAX = 8;
 export const START = { laserLv: 1, waveLv: 0, homingLv: 0, shieldHp: 0, burstStock: 1 };
 // a run that starts directly at zone G gets a mid kit
 export const START_G = { laserLv: 3, waveLv: 1, homingLv: 0, shieldHp: 2, burstStock: 1 };
+export const KIT_MAX = { laserLv: LASER_MAX, waveLv: WAVE_MAX, homingLv: HOMING_MAX, shieldHp: SHIELD_MAX, burstStock: BURST_MAX };
 export const ITEM_KINDS = ['laser', 'wave', 'homing', 'shield', 'bomb'];
 const LEGACY = { red: 'laser', missile: 'laser', green: 'wave', bomb: 'bomb', blue: 'homing', cyan: 'shield', arm: 'shield' };
 const SPEED = 2, DIAG = 1.5;
 const X_MIN = 12, X_MAX = W - 18, Y_MIN = 9, Y_MAX = H - 9;
 const ENTER_FRAMES = 50, RESPAWN_DELAY = 80, INVULN = 170 /* 50f entry + 2 s */, HOME_X = 56, CRUISE_X = 60;
-const RESPAWN_MIN_LASER = 2;
 const ITEM_SCORE = 1000, ITEM_MAX_BONUS = 5000, SHIELD_PER_ITEM = 2;
 
 const sfx = (n) => { if (typeof audio.sfx === 'function') audio.sfx(n); };
 const fxc = (fn, ...a) => { if (typeof fx[fn] === 'function') fx[fn](...a); };
 
+function startKit(world) {
+  const base = { ...(world.zone === 'G' || world.zone === 'M' ? START_G : START) };
+  const k = world.kit;
+  if (k) {
+    if (k.max) Object.assign(base, KIT_MAX);
+    const lv = (v, lo, hi) => clamp(Math.round(v), lo, hi);
+    if (Number.isFinite(k.lv)) { base.laserLv = lv(k.lv, 1, LASER_MAX); base.waveLv = lv(k.lv, 0, WAVE_MAX); base.homingLv = lv(k.lv, 0, HOMING_MAX); }
+    if (Number.isFinite(k.laser)) base.laserLv = lv(k.laser, 1, LASER_MAX);
+    if (Number.isFinite(k.wave)) base.waveLv = lv(k.wave, 0, WAVE_MAX);
+    if (Number.isFinite(k.homing)) base.homingLv = lv(k.homing, 0, HOMING_MAX);
+    if (Number.isFinite(k.shield)) base.shieldHp = lv(k.shield, 0, SHIELD_MAX);
+    if (Number.isFinite(k.burst)) base.burstStock = lv(k.burst, 0, BURST_MAX);
+  }
+  return base;
+}
+
 export function init(world) {
   world.player = {
     x: -30, y: H / 2, alive: true, lives: 2, invuln: 0, respawn: 0, entering: 0, parked: true,
     bank: 0, cool: 0, waveCool: 0, homingCool: 0, homingSide: 1, muzzle: 0, volley: 0,
-    ...(world.zone === 'G' || world.zone === 'M' ? START_G : START),
+    ...startKit(world),
     laserMax: LASER_MAX, waveMax: WAVE_MAX, homingMax: HOMING_MAX, shieldMax: SHIELD_MAX, burstMax: BURST_MAX,
-    shieldFlash: 0, shieldGrace: 0, itemsCollected: 0, kvx: 0, kvy: 0, pops: [], impacts: [], burst: null, t: 0, collectFx: null, sceneSeen: null, lastItem: null, lastDeath: null,
+    shieldFlash: 0, shieldGrace: 0, itemsCollected: 0, shieldOwed: 0, kvx: 0, kvy: 0, pops: [], impacts: [], burst: null, t: 0, collectFx: null, sceneSeen: null, lastItem: null, lastDeath: null,
   };
   // per-run state owned by the player module
   world.items = [];
+  world.dmgMeter = {};
   if (world.pShots) world.pShots.length = 0; else world.pShots = [];
   if (typeof document !== 'undefined') art(); // pre-render once (~17 ms) so the first shot never hitches
 }
@@ -146,11 +164,14 @@ export function killPlayer(world, cause = 'unknown', atk = null) {
   p.alive = false;
   p.respawn = RESPAWN_DELAY;
   p.lives--;
+  track(`death/${world.zone || 'V'}/${cause}`, `death ${cause}`);
   if (p.shieldHp > 0) addPop(world, p.x + 1, p.y);
+  // the shield is lost; part of it comes back as SHIELD capsules that float in with the new ship
+  // (catch-up, combat v2b: one death must not snowball; 1 capsule = +2, up to 2 capsules)
+  p.shieldOwed = Math.min(2, Math.ceil(p.shieldHp / 3));
   p.shieldHp = 0;
-  p.laserLv = Math.max(RESPAWN_MIN_LASER, p.laserLv - 2); // keep recovery possible
-  p.waveLv = Math.max(0, p.waveLv - 2);
-  p.homingLv = Math.max(0, p.homingLv - 2);
+  p.levelAtDeath = p.laserLv;
+  p.kitAtDeath = `${p.laserLv}/${p.waveLv}/${p.homingLv}`;
   fxc('explode', world, p.x, p.y, 'large');
   fxc('addShake', world, 4);
   if (typeof fx.debris === 'function') {
@@ -175,7 +196,9 @@ function collect(world, it) {
   const p = world.player;
   let maxed = false;
   const up = (k, max) => { if (p[k] < max) p[k]++; else maxed = true; };
-  if (it.kind === 'laser') up('laserLv', LASER_MAX);
+  const lock = !!(world.kit && world.kit.lock) && (it.kind === 'laser' || it.kind === 'wave' || it.kind === 'homing'); // DPS measurement kit: levels never change
+  if (lock) maxed = true;
+  else if (it.kind === 'laser') up('laserLv', LASER_MAX);
   else if (it.kind === 'wave') up('waveLv', WAVE_MAX);
   else if (it.kind === 'homing') up('homingLv', HOMING_MAX);
   else if (it.kind === 'shield') {
@@ -187,7 +210,7 @@ function collect(world, it) {
   fxc('scorePopup', world, it.x, it.y - 6, val);
   p.collectFx = { x: it.x, y: it.y, t: 0, kind: it.kind };
   p.itemsCollected++;
-  p.lastItem = { kind: it.kind, t: world.frame, maxed }; // NEW object per pickup (HUD flash, playtest counts by identity)
+  p.lastItem = { kind: it.kind, t: world.frame, maxed };
   sfx('powerup');
 }
 
@@ -226,11 +249,13 @@ function clearTransient(world) {
   Object.assign(p, { burst: null, pops: [], impacts: [], collectFx: null, kvx: 0, kvy: 0, shieldGrace: 0, shieldFlash: 0, cinematic: false });
 }
 
-// Arcade continue: fresh stock, fly in now, fair kit (wave/homing kept).
+// Arcade continue: fresh stock, fly in now; every gauge level is kept (LASER only ever RAISED to the
+// Lv3 floor, never lowered), shield ≥ 2, burst ≥ 1.
 export function onContinue(world) {
   const p = world.player;
   clearTransient(world);
   p.lives = 2;
+  p.shieldOwed = 0;
   p.laserLv = Math.max(p.laserLv, 3);
   p.shieldHp = Math.min(SHIELD_MAX, Math.max(p.shieldHp, 2));
   p.burstStock = Math.max(p.burstStock, 1);
@@ -268,6 +293,12 @@ export function update(world) {
       startEntry(p);
       p.invuln = INVULN;
       p.burstStock = Math.max(p.burstStock, 1);
+      // owed shield capsules drift in ahead of the respawning ship (grab them during the invulnerability)
+      for (let i = 0; i < p.shieldOwed; i++) {
+        spawnItem(world, HOME_X + 70 + i * 26, H / 2 + (i ? 18 : -18), 'shield');
+        const it = world.items[world.items.length - 1]; it.vx = -0.6; it.vy = 0;
+      }
+      p.shieldOwed = 0;
     }
   } else if (p.entering > 0) {
     p.entering--;

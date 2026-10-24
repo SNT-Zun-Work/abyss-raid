@@ -1,26 +1,8 @@
-// Particles, explosions, hit sparks, debris, score popups, screen shake/flash
-// decay (bg/fx agent). All randomness from world.fxRng (cosmetic stream).
-//
-// Public API:
-//   init(world) update(world) drawUnder(ctx, world) drawOver(ctx, world)
-//   explode(world, x, y, size, opts?)   size: 'small'|'medium'|'large'|'huge'; opts.debris = colour | [colours] | sprite | false
-//   spark(world, x, y, angle)           metallic "tink" — sparks fly toward `angle` (radians)
-//   addShake(world, px)                 adds screen shake (clamped to 10)
-//   debris(world, x, y, vx, vy, spriteOrColor)  tumbling sinking chunk; canvas sprite or CSS colour
-//   scorePopup(world, x, y, value)      pixel digits floating up (value ≥ 10000 → cyan bonus, ≥ 100000 → 2x)
-//   bubbleTrail(world, x, y)            one exhaust bubble (call every few frames from engines)
-//   heatHaze(world, x, y, w, h, frames=30)  shimmering row-offset distortion band (e.g. giga laser); drawn in drawUnder
-//   screenRumble(world, frames, px)         sustained shake: keeps world.shake ≥ px (easing out) for `frames`
-//   splash(world, x, y?, size)          zone G: droplet crown + foam ring + bubbles (y defaults to world.bg.surfaceY)
-//   wake(world, x)                      zone G: surface disturbance over a submerged boss (call every few frames)
-//   mudBurst(world, x, y)               zone G: mud-ball impact (brown clods, puffs, chunks)
-//
-// Layers: drawUnder (smoke, fireballs, debris, bubbles — behind player & bullets,
-// so explosions never hide enemy shots) and drawOver (flash stars, sparks,
-// shockwave rings, score popups).
+import { drawSpray } from './boss-skipper-art.js';
+import { paintedCell, paintedSurface } from './g-painted-fx.js';
 import { W, H } from '../config.js';
 import { swapRemove } from '../core/util.js';
-import { getFxArt, chunkSprites, digitSprite } from './fx-art.js';
+import { getFxArt, chunkSprites, digitSprite, getMudArt } from './fx-art.js';
 
 const MAX = 900;          // hard cap on live particles
 const SOFT = 760;         // cosmetic extras (smoke/bubbles/debris) stop spawning here
@@ -28,12 +10,13 @@ const SURFACE_Y = 10;     // bubbles pop here
 const MAX_BUBBLES = 70;   // keep bubbles from cluttering big death sequences
 
 const K_FIRE = 0, K_SMOKE = 1, K_SPARK = 2, K_FLASH = 3, K_DEBRIS = 4, K_BUBBLE = 5, K_POPUP = 6, K_RING = 7, K_GLOW = 8;
-const K_DROP = 9, K_FOAM = 10, K_MUD = 11;   // zone G water / mud FX
+const K_DROP = 9, K_FOAM = 10, K_MUD = 11, K_GEYSER = 12, K_SPLAT = 13;   // zone G water / mud FX
 const ESSENTIAL = new Set([K_FIRE, K_FLASH, K_POPUP, K_RING, K_GLOW]);
 
 export function init(world) {
   getFxArt();
   world.fxState = { parts: [], spare: [], popCache: new Map(), nBub: 0, hazes: [], rumble: null };
+  if (world.zone && world.zone !== 'V') getMudArt();
 }
 
 function spawn(world, k, x, y) {
@@ -207,6 +190,11 @@ export function update(world) {
   world.flash = Math.max(0, world.flash - 0.08);
   const st = world.fxState;
   const P = st.parts;
+  const bgc = world.bg;
+  const drift = bgc && bgc.chase > 0 && bgc.chaseSpeed ? bgc.chaseSpeed * Math.min(1, bgc.chase) * 0.9 : 0;
+  if (st.mounds && st.mounds.length) updateMounds(world, st);
+  if (st.wipe && ++st.wipe.t >= st.wipe.life) st.wipe = null;
+  else if (st.wipe) updateWipe(st.wipe);
   for (let i = P.length - 1; i >= 0; i--) {
     const p = P[i];
     if (p.d > 0) { p.d--; continue; }
@@ -216,6 +204,15 @@ export function update(world) {
       case K_SMOKE: p.x += p.vx; p.y += p.vy; p.vy *= 0.985; break;
       case K_SPARK: p.x += p.vx; p.y += p.vy; p.vx *= 0.88; p.vy = p.vy * 0.88 + 0.03; break;
       case K_DEBRIS:
+        if (p.r1 === 1) { // dried mud flake in air: falls, plops into the sea in zone G
+          p.vy = Math.min(3, p.vy + 0.1); p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.a += p.va;
+          if (world.zone !== 'V' && p.vy > 0 && p.r0 === 1 && p.y > surfaceY(world)) {
+            const f = spawn(world, K_FOAM, p.x, surfaceY(world)); if (f) { f.r0 = 1; f.r1 = 6; f.life = 16; }
+            p.t = p.life;
+          }
+          if (p.y > H + 20 || p.x < -40 || p.x > W + 40) p.t = p.life;
+          break;
+        }
         p.x += p.vx; p.y += p.vy; p.a += p.va;
         p.vx *= 0.985; p.vy = Math.min(1.4, p.vy * 0.99 + 0.035);
         if ((p.t + p.ph) % 26 === 0 && P.length < SOFT) {
@@ -233,12 +230,14 @@ export function update(world) {
       case K_POPUP: p.y += p.vy; p.vy *= 0.95; break;
       case K_DROP:
         p.vy += 0.14; p.vx *= 0.99; p.x += p.vx; p.y += p.vy;
-        if (p.s === 0 && p.vy > 0 && p.y > surfaceY(world) + 1) p.t = p.life;   // fell back into the sea
+        if ((p.s === 0 || p.r0 === 1) && p.vy > 0 && p.y > surfaceY(world) + 1) p.t = p.life;   // fell back into the sea
         if (p.y > H + 8) p.t = p.life;
         break;
       case K_MUD: p.x += p.vx; p.y += p.vy; p.vy = p.vy * 0.97 + 0.01; break;
+      case K_SPLAT: if (p.t > 26) { p.vy += 0.05; p.y += p.vy; } break;
       default: break;
     }
+    if (drift && (p.k === K_DROP || p.k === K_FOAM || p.k === K_MUD || p.k === K_GEYSER || (p.k === K_DEBRIS && p.r1 === 1))) p.x -= drift;
     if (p.t >= p.life) { if (p.k === K_BUBBLE) st.nBub--; st.spare.push(p); swapRemove(P, i); }
   }
 }
@@ -355,6 +354,7 @@ export function drawOver(ctx, world) {
     ctx.drawImage(s, Math.round(p.x - s.width / 2), Math.round(p.y - s.height / 2));
   }
   drawWater(ctx, world);
+  if (world.fxState.wipe) drawWipe(ctx, world.fxState.wipe);
   ctx.imageSmoothingEnabled = smooth;
 }
 
@@ -474,10 +474,28 @@ export function mudBurst(world, x, y) {
   const f = spawn(world, K_FLASH, x, y); if (f) { f.s = 0; f.life = 3; }
 }
 
-const DROP_COL = [['#cfeeff', '#ffffff'], ['#4e3422', '#7a5638']];
+const DROP_COL = [['#cfeeff', '#ffffff'], ['#5e4430', '#8e6c48']];
 function drawMudPuffs(ctx, world) {
   const P = world.fxState.parts;
   const A = getFxArt();
+  // localized splats (behind bullets): slam in oversized, slide down, fade
+  for (const p of P) {
+    if (p.k !== K_SPLAT || p.d > 0) continue;
+    const s = getMudArt().splats[p.s], q = p.t / p.life;
+    const sz = Math.round(s.width * p.sc * (p.t < 4 ? 1.4 : 1));
+    ctx.globalAlpha = q < 0.7 ? 1 : Math.max(0, 1 - (q - 0.7) / 0.3);
+    if(!paintedCell(ctx,'clods',8+Math.abs(p.s%4),Math.round(p.x-sz/2),Math.round(p.y-sz/2),sz,sz))ctx.drawImage(s, Math.round(p.x - sz / 2), Math.round(p.y - sz / 2), sz, sz);
+    ctx.globalAlpha = 1;
+  }
+  // geyser columns: shoot up fast, hold, then collapse back down
+  for (const p of P) {
+    if (p.k !== K_GEYSER || p.d > 0) continue;
+    const g = getMudArt().geyser, q = p.t / p.life;
+    const k = q < 0.15 ? q / 0.15 : q < 0.55 ? 1 : Math.max(0, 1 - (q - 0.55) / 0.45);
+    const h = Math.round(g.height * p.sc * (q < 0.15 ? 1 - (1 - k) ** 2 : k)), w = Math.round(g.width * p.sc * (0.8 + 0.2 * k));
+    if (h < 2) continue;
+    ctx.drawImage(g, 0, 0, g.width, g.height, Math.round(p.x - w / 2), Math.round(p.y - h), w, h);
+  }
   // mud puffs
   const sm = A.mud;
   for (const p of P) {
@@ -492,9 +510,13 @@ function drawWater(ctx, world) {
   for (const p of P) {
     if (p.k !== K_FOAM || p.d > 0) continue;
     const q = p.t / p.life, r = p.r0 + (p.r1 - p.r0) * (1 - (1 - q) ** 2);
+    if(world.zone==='G' && paintedCell(ctx,p.s===1?'clods':'water',p.s===1?8+Math.abs(Math.floor(p.r1))%4:14+(q>.5?1:0),p.x-r,p.y-5,r*2,10,1-q)){
+      if(p.s!==1)paintedSurface(ctx,p.x,p.y,p.t,Math.max(28,p.r1*2));
+      continue;
+    }
     ctx.globalAlpha = 1 - q;
-    ctx.strokeStyle = '#e8f8ff'; ctx.lineWidth = q < 0.4 ? 2 : 1;
-    ctx.beginPath(); ctx.ellipse(Math.round(p.x), Math.round(p.y), r, Math.max(1, r * 0.16), 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = p.s === 1 ? '#a07a52' : '#e8f8ff'; ctx.lineWidth = q < 0.4 ? 2 : 1;
+    for(let j=0;j<7;j++){const a=j*.91+p.x*.13;ctx.beginPath();ctx.ellipse(Math.round(p.x),Math.round(p.y),r,Math.max(1,r*.16),0,a,a+.34+(1-q)*.25);ctx.stroke();}
   }
   ctx.globalAlpha = 1;
   // droplets / clods
@@ -503,6 +525,201 @@ function drawWater(ctx, world) {
     const col = DROP_COL[p.s];
     ctx.fillStyle = col[p.ph ? 1 : 0];
     const x = Math.round(p.x), y = Math.round(p.y);
-    ctx.fillRect(x, y, p.ph ? 2 : 1, 2);
+    drawSpray(ctx,x,y,p.vx,p.vy,p.t,p.s===1,p.ph+Math.floor(p.x));
   }
+}
+
+// ------------------------------------------------- hybrid ZONE G: mud FX
+const MUD_FLAKES = ['#6a5236', '#54402a', '#8a6c48', '#3e2e1e'];
+
+// mudChunk(world, x, y, vx, vy): dried mud flake chipping off (harmless,
+// drawn in drawUnder = behind bullets). Falls; plops into the sea if it
+// started above the surface.
+export function mudChunk(world, x, y, vx = 0, vy = 0) {
+  const R = world.fxRng;
+  const p = spawn(world, K_DEBRIS, x, y);
+  if (!p) return;
+  p.spr = chunkSprites(MUD_FLAKES[R.int(0, MUD_FLAKES.length - 1)])[R.int(0, 2)];
+  p.vx = vx; p.vy = vy; p.va = R.range(-0.25, 0.25); p.a = R.range(0, 6.28);
+  p.life = 300; p.r1 = 1; p.r0 = y < surfaceY(world) ? 1 : 0;
+}
+
+// mudWake(world, x, y?): mud + spray kicked up behind the skipping boss (call
+// every few frames). y defaults to the sea surface.
+export function mudWake(world, x, y) {
+  const R = world.fxRng, yy = typeof y === 'number' ? y : surfaceY(world), above = yy <= surfaceY(world) + 1 ? 1 : 0;
+  for (let i = 0; i < 5; i++) {
+    const p = spawn(world, K_DROP, x + R.range(-6, 6), yy - 1);
+    if (!p) break;
+    const mud = i >= 3;
+    p.s = mud ? 1 : 0; p.r0 = mud ? above : 0;
+    p.vx = -R.range(0.8, 2.6); p.vy = -R.range(0.8, 2.6); p.life = 50; p.ph = R.next() < 0.4 ? 1 : 0;
+  }
+  const f = spawn(world, K_FOAM, x + R.range(-4, 4), surfaceY(world));
+  if (f) { f.r0 = 3; f.r1 = R.range(10, 18); f.life = 22; }
+  if (R.next() < 0.3) {
+    const m = spawn(world, K_MUD, x, yy - 2);
+    if (m) { m.vx = -R.range(0.3, 0.9); m.vy = -R.range(0.1, 0.3); m.life = R.int(24, 36); m.sc = 1; }
+  }
+}
+
+// mudColumn(world, x, y?): huge mud-and-water column (eruption / death).
+export function mudColumn(world, x, y) {
+  const R = world.fxRng, yy = typeof y === 'number' ? y : surfaceY(world);
+  splash(world, x, yy, 'large');
+  const gz = spawn(world, K_GEYSER, x, yy + 4);
+  if (gz) { gz.life = 70; gz.sc = 1.3; }
+  for (let i = 0; i < 70; i++) {
+    const p = spawn(world, K_DROP, x + R.range(-10, 10), yy - R.range(0, 6));
+    if (!p) break;
+    const mud = R.next() < 0.6;
+    p.s = mud ? 1 : 0; p.r0 = mud ? 1 : 0; p.d = R.int(0, 12);
+    p.vx = R.range(-1.7, 1.7); p.vy = -R.range(4, 9.5); p.life = 120; p.ph = R.next() < 0.5 ? 1 : 0;
+  }
+  for (let i = 0; i < 11; i++) {
+    const m = spawn(world, K_MUD, x + R.range(-8, 8), yy - i * 11);
+    if (!m) break;
+    m.d = i * 2; m.vx = R.range(-0.3, 0.3); m.vy = -R.range(0.2, 0.5); m.life = R.int(50, 80); m.sc = 3;
+  }
+  for (let i = 0; i < 2; i++) { const f = spawn(world, K_FOAM, x, surfaceY(world)); if (f) { f.d = i * 9; f.r0 = 8; f.r1 = 50 + i * 30; f.life = 40; } }
+  for (let i = 0; i < 6; i++) mudChunk(world, x + R.range(-8, 8), yy - R.range(10, 60), R.range(-2, 2), -R.range(2, 5));
+  addShake(world, 6);
+}
+
+// mudWipe(world, frames=150): screen-space mud splatter that slams over the
+// playfield, holds, then slides and drips off. Drawn last in drawOver (above
+// gameplay; HUD/scenes stay on top). Purely cosmetic — the gameplay pause
+// belongs to the boss/scenes side.
+export function mudWipe(world, frames = 150) {
+  const R = world.fxRng;
+  const blobs = [];
+  // a coarse jittered grid so the whole field is covered, heavier at the edges
+  for (let gy = 0; gy < 5; gy++) for (let gx = 0; gx < 8; gx++) {
+    const edge = gx === 0 || gx === 7 || gy === 0 || gy === 4;
+    if (!edge && R.next() < 0.25) continue;
+    blobs.push({ x: (gx + 0.5) * (W / 8) + R.range(-14, 14), y: (gy + 0.5) * (H / 5) + R.range(-10, 10), v: R.int(0, 4),
+      sc: edge || R.next() < 0.35 ? 2 : 1, d: R.int(0, 7), vy: 0, g: R.range(0.02, 0.07), fl: R.int(0, 3) });
+  }
+  const drips = [];
+  for (let i = 0; i < 26; i++) drips.push({ x: R.range(0, W), y: R.range(-10, H * 0.6), v: R.int(0, 2), sp: R.range(0.4, 1.6), d: R.int(10, 50) });
+  world.fxState.wipe = { t: 0, life: Math.max(30, frames | 0), blobs, drips };
+}
+
+function updateWipe(w) {
+  const hold = w.life * 0.35;
+  for (const b of w.blobs) if (w.t > hold + b.d * 3) { b.vy += b.g; b.y += b.vy; }
+  for (const d of w.drips) if (w.t > d.d) d.y += d.sp * (w.t > hold ? 2.2 : 1);
+}
+
+function drawWipe(ctx, w) {
+  const A = getMudArt();
+  const q = w.t / w.life;
+  const a = q < 0.75 ? 1 : Math.max(0, 1 - (q - 0.75) / 0.25);
+  ctx.globalAlpha = a;
+  for (const d of w.drips) {
+    if (w.t < d.d) continue;
+    const s = A.drips[d.v];
+    ctx.drawImage(s, Math.round(d.x), Math.round(d.y));
+  }
+  for (const b of w.blobs) {
+    const lt = w.t - b.d;
+    if (lt < 0) continue;
+    const slam = lt < 4 ? 1.5 : 1;                             // slams in oversized, then snaps
+    const s = A.splats[b.v], sz = s.width * b.sc * slam;
+    ctx.save();
+    ctx.translate(Math.round(b.x), Math.round(b.y));
+    ctx.scale(b.fl & 1 ? -1 : 1, b.fl & 2 ? -1 : 1);
+    ctx.drawImage(s, -Math.round(sz / 2), -Math.round(sz / 2), Math.round(sz), Math.round(sz));
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------- ZONE G burrow transition
+// burrowMound(world, x, y, frames=150): the boss digs into the mudflat in the
+// LOWER-RIGHT. A churning mud heap rises out of the flat at (x, y = ground
+// line), throwing mud fountains, chunks and brown shockwave rings along the
+// flat; at ~85% it bursts (mud column + chunks) as the boss emerges, then the
+// heap collapses. Localized: x is clamped to the right third so the player's
+// left/centre stays clear. Drawn in drawUnder (over the boss, behind player
+// and bullets).
+export function burrowMound(world, x, y, frames = 150) {
+  const st = world.fxState;
+  if (!st.mounds) st.mounds = [];
+  if (st.mounds.length >= 2) st.mounds.shift();
+  const L = Math.max(40, frames | 0);
+  st.mounds.push({ x: Math.max(x, W * 0.68), y: typeof y === 'number' ? y : H - 30, t: 0, life: L, burst: Math.round(L * 0.85), sc: 1 });
+  screenRumble(world, Math.round(L * 0.85), 1.5);
+}
+
+function moundK(m) {
+  const q = m.t / m.life;
+  if (q < 0.08) return 0;
+  if (q < 0.7) { const u = (q - 0.08) / 0.62; return 1 - (1 - u) ** 2; }
+  if (m.t < m.burst) return 1 + 0.12 * Math.sin(m.t * 0.9);       // bulging before the burst
+  return Math.max(0, 1 - (m.t - m.burst) / 40);                   // collapses after the burst
+}
+
+function ring(world, x, y, r1, life, delay = 0) {
+  const f = spawn(world, K_FOAM, x, y);
+  if (f) { f.s = 1; f.r0 = 6; f.r1 = r1; f.life = life; f.d = delay; }
+}
+
+function updateMounds(world, st) {
+  const R = world.fxRng;
+  for (let i = st.mounds.length - 1; i >= 0; i--) {
+    const m = st.mounds[i];
+    m.t++;
+    const k = moundK(m), top = m.y - 54 * k, half = 60;
+    if (m.t === 1) { ring(world, m.x, m.y, 70, 34); ring(world, m.x, m.y, 46, 26, 8); }
+    if (m.t > m.life * 0.08 && m.t < m.burst) {
+      if (m.t % 22 === 0) ring(world, m.x, m.y, 56 + R.range(0, 20), 30);
+      if (m.t % 5 === 0) {      // mud fountains off the heap (thrown up and to the right)
+        for (let j = 0; j < 4; j++) {
+          const p = spawn(world, K_DROP, m.x + R.range(-half * 0.6, half * 0.6) * k, top + R.range(0, 6));
+          if (!p) break;
+          p.s = 1; p.r0 = 0; p.vx = R.range(-0.7, 1.4); p.vy = -R.range(2.2, 5) * (0.6 + 0.4 * k); p.life = 60; p.ph = R.next() < 0.5 ? 1 : 0;
+        }
+        if (R.next() < 0.35) mudChunk(world, m.x + R.range(-30, 30) * k, top + 4, R.range(-0.6, 1.6), -R.range(2, 4));
+        if (R.next() < 0.3) { const pf = spawn(world, K_MUD, m.x + R.range(-24, 24) * k, top + 2); if (pf) { pf.vx = R.range(-0.2, 0.4); pf.vy = -R.range(0.3, 0.7); pf.life = R.int(30, 50); pf.sc = 2; } }
+      }
+    }
+    if (m.t === m.burst) {
+      mudColumn(world, m.x, m.y - 6);
+      for (let j = 0; j < 12; j++) mudChunk(world, m.x + R.range(-20, 20), m.y - R.range(10, 50), R.range(-1.2, 2.6), -R.range(3, 6));
+      ring(world, m.x, m.y, 110, 40); ring(world, m.x, m.y, 80, 32, 6);
+      addShake(world, 6);
+    }
+    if (m.t > m.burst + 44) st.mounds.splice(i, 1);
+  }
+}
+
+// Called by bg-g.drawMid right after the mudflat (in front of the flat and
+// the boss's lower body, behind player and bullets).
+export function drawMounds(ctx, world) {
+  const ms = world.fxState.mounds;
+  if (!ms || !ms.length) return;
+  const A = getMudArt();
+  for (const m of ms) {
+    const k = moundK(m);
+    if (k <= 0.01) continue;
+    const spr = A.mound[(m.t >> 3) % 3], w = spr.width, h = spr.height;
+    const jx = m.t < m.burst ? ((m.t >> 1) & 1) : 0;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(Math.round(m.x - w / 2 - 4), -60, w + 8, Math.round(m.y) + 62); ctx.clip();   // rises out of the flat
+    ctx.drawImage(spr, Math.round(m.x - w / 2 + jx), Math.round(m.y + 2 - h * Math.min(1.15, k)));
+    ctx.restore();
+  }
+}
+
+// mudSplat(world, x, y, size='medium'): one localized mud splat that slams on,
+// slides down and fades (~70 frames). Drawn behind bullets. size 'small' |
+// 'medium' | 'large'. Use near the lower-right edge for the burrow; never
+// over the player's area.
+export function mudSplat(world, x, y, size = 'medium') {
+  const R = world.fxRng;
+  const p = spawn(world, K_SPLAT, x, y);
+  if (!p) return;
+  p.s = size === 'small' ? R.pick([0, 3]) : size === 'large' ? R.pick([2, 4]) : R.pick([1, 3]);
+  p.sc = size === 'large' ? 2 : 1; p.life = 70; p.vy = 0;
 }

@@ -1,18 +1,3 @@
-// SCHOOLS of mecha-axolotl fry (fun pass "school wipe"). Owned by the boss agent.
-//
-// Every few seconds a school of 15-25 small fry (~22-26 px, same design as the
-// boss) streams in from the right in a readable formation: ribbon stream,
-// S-curve, vortex (rotating rings), or split pincer (top + bottom). Fry die in
-// 1-2 laser-1 hits; a few designated "gunners" (red glow) fire one aimed shot
-// each, the rest are fodder that only hurt you if you sit in their path.
-// Kills build a CHAIN (resets after FRY.chainGap frames without a kill, or when
-// a school escapes). Wiping a whole school pays a bonus and a guaranteed item.
-//
-// Events: fishKill {x,y,chain}, schoolWiped {x,y,bonus,size}, schoolEscaped {left}.
-// world.stats: fishKills, bestChain, schoolsWiped.
-//
-// Export names are kept from the old escorts (initEscorts, updateEscorts, …);
-// b.escorts holds the live fry ({x, y, …}) — boss.targets() lists them.
 import { W, H } from '../config.js';
 import * as bullets from './bullets.js';
 import { FRY_DIRS } from './boss-parts.js';

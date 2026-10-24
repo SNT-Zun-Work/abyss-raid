@@ -1,6 +1,3 @@
-// Init-time helpers for procedural pixel art (bg/fx agent). Nothing here runs
-// per frame. Hash-based, so art is identical every boot and never touches
-// world.rng / world.fxRng.
 import { makeSprite } from '../core/util.js';
 
 export function hash(x, y, s) {

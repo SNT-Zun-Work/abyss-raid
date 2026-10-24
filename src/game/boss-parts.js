@@ -1,12 +1,4 @@
 import { enhanceAxolotlSprites } from './v-visual-parts.js';
-// Boss part geometry (part space, facing left; origin = pivot). Owned by the
-// boss agent. Everything here runs once at load (sprites are cached).
-//
-// Look (ART DIRECTION v2): a mechanical axolotl battleship — white/silver hull
-// bands with red accent stripes over pink flesh and dark machinery with red
-// lights; a shark-like armored head casing with a red eye and a toothed
-// mechanical jaw; magenta feathery gill-fins and fin-blades. Armor pieces are
-// separate sprites so they can blow off (P2/P3) to reveal the pink axolotl.
 import { buildPart, buildGlow, buildBeamStrip } from './boss-art.js';
 import { makeSprite } from '../core/util.js';
 

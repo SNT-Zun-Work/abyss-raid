@@ -48,6 +48,21 @@ export function updateEvents(world) {
         if (!S.skimHintShown) { S.skimHintShown = true; S.hint = { t: 0, msg: 'FLY LOW OVER THE WATER: SKIM BONUS' }; }
         break;
       }
+      case 'thread': {
+        // zone G chase: threading a mud-wall gate / shooting one open / breaking the cannon nozzle
+        const v = Math.max(0, Number(e.value) || 0);
+        const p = world.player;
+        const lab = typeof e.label === 'string' ? e.label.slice(0, 16) : 'THREAD';
+        const x = lab === 'THREAD' && p && Number.isFinite(p.x) ? p.x + 6 : Number(e.x) || W / 2;
+        const y = lab === 'THREAD' && p && Number.isFinite(p.y) ? p.y - 12 : Number(e.y) || H / 2;
+        S.popups.push({ text: `${lab} +${v}`, x: clamp(x, 10, W - 90), y: clamp(y, 30, H - 10), t: 0, life: 44, style: lab === 'THREAD' ? 'cyan' : 'gold' });
+        if (!S.threadHintShown && lab === 'THREAD') { S.threadHintShown = true; S.hint = { t: 0, msg: 'THREAD THE GLOWING GATES' }; }
+        break;
+      }
+      case 'escape':
+        S.escape = { t: 0 };
+        S.popups.length = 0;
+        break;
       case 'chainBreak':
         S.chainT = Math.max(S.chainT, CHAIN_GAP + CHAIN_FADE - 18); // quick fade
         break;
@@ -58,6 +73,38 @@ export function updateEvents(world) {
         break;
       }
       case 'gillKill': {
+        if (e.part === 'mud') {
+          // new zone G: breakable mud armor plates
+          const total = Math.max(1, Number(e.total) || 1);
+          const mleft = clamp(Number(e.left) || 0, 0, total);
+          S.popups.push({ text: 'MUD ' + (total - mleft) + '/' + total, x: Number(e.x) || W / 2, y: Number(e.y) || H / 2, t: 0, life: 44, style: 'sand' });
+          if (!S.mudHintShown) { S.mudHintShown = true; S.hint = { t: 0, msg: 'PEEL THE MUD ARMOR' }; }
+          S.gillFlash = 16;
+          break;
+        }
+        if (e.part === 'tail') {
+          // new zone G chase: "TAIL n/5"
+          const total = Math.max(1, Number(e.total) || 5);
+          const tleft = clamp(Number(e.left) || 0, 0, total);
+          S.popups.push({ text: `TAIL ${total - tleft}/${total}`, x: Number(e.x) || W / 2, y: Number(e.y) || H / 2, t: 0, life: 44, style: 'gold' });
+          S.gillFlash = 16;
+          break;
+        }
+        if (e.part === 'eye' && world.boss && world.boss.half !== undefined) {
+          // new zone G (hybrid): eyes are just glowing parts, no BLINDED
+          const total = Math.max(1, Number(e.total) || 2);
+          const eleft = clamp(Number(e.left) || 0, 0, total);
+          S.popups.push({ text: `EYE ${total - eleft}/${total}`, x: Number(e.x) || W / 2, y: Number(e.y) || H / 2, t: 0, life: 44, style: 'red' });
+          S.gillFlash = 16;
+          break;
+        }
+        if (e.part === 'sail' && world.boss && world.boss.half !== undefined) {
+          const total = Math.max(1, Number(e.total) || 1);
+          const sleft = clamp(Number(e.left) || 0, 0, total);
+          S.popups.push({ text: total > 1 ? `SAIL ${total - sleft}/${total}` : 'SAIL BROKEN!', x: Number(e.x) || W / 2, y: Number(e.y) || H / 2, t: 0, life: 44, style: 'gold' });
+          S.gillFlash = 16;
+          break;
+        }
         if (e.part === 'sail' || e.part === 'fin') {
           // zone M: "SAIL n/3" / "FIN n/2"
           const total = Math.max(1, Number(e.total) || (e.part === 'sail' ? 3 : 2));
@@ -120,6 +167,9 @@ export function updateEvents(world) {
         break;
       }
       case 'phaseChange':
+        if (Number(e.to) === 2 && world.boss && world.boss.half !== undefined && !S.tailHintShown) {
+          S.tailHintShown = true; S.hint = { t: 0, msg: 'SHOOT THE GLOWING TAIL SEGMENT' };
+        }
         if (Number(e.to) === 4) {
           S.final = { t: 0 };
           world.flash = Math.max(world.flash || 0, 0.9);
@@ -135,6 +185,13 @@ export function updateEvents(world) {
   for (let i = S.popups.length - 1; i >= 0; i--) if (++S.popups[i].t > S.popups[i].life) S.popups.splice(i, 1);
   if (S.popups.length > 6) S.popups.splice(0, S.popups.length - 6);
   if (S.hint && ++S.hint.t > 130) S.hint = null;
+  if (S.escape && ++S.escape.t > 150) S.escape = null;
+  // new zone G: one-time "glowing parts" hint once the fight starts (first half)
+  const bb = world.boss;
+  if (bb && bb.half !== undefined && world.scene === 'boss' && !S.partsHintShown && world.sceneT > 90 && Number(bb.half) !== 2) {
+    S.partsHintShown = true; S.hint = { t: 0, msg: 'SHOOT THE GLOWING PARTS' };
+  }
+  if (bb && Number(bb.half) === 2 && !S.tailHintShown) { S.tailHintShown = true; S.hint = { t: 0, msg: 'SHOOT THE GLOWING TAIL SEGMENT' }; }
   if (S.death && ++S.death.t > 160) S.death = null;
   if (S.final && ++S.final.t > 170) S.final = null;
   // remember the most recent safe-zone hint (attacks may clear it before the death event lands)
@@ -223,6 +280,7 @@ export function drawEvents(ctx, world) {
   }
   for (const b of S.banners) drawWipe(ctx, b, world);
   if (S.stun) drawStun(ctx, S.stun);
+  if (S.escape) drawEscape(ctx, S.escape);
   if (S.death) drawDeath(ctx, S.death, world);
   if (S.final) drawFinal(ctx, S.final, world);
 }
@@ -575,4 +633,101 @@ export function drawPartTracker(ctx, world, t) {
   drawText(ctx, 'FINS', x, y, { style: flash ? 'white' : 'red', shadow: false });
   x += 26;
   fins.forEach((q) => { pip(x, q, '#d04040', '#ffb0a0'); x += 9; });
+}
+
+// "TARGET ESCAPING": red bar with hazard chevrons (top-left of the playfield), ~2.5 s
+function drawEscape(ctx, e) {
+  const t = e.t;
+  const a = t < 6 ? t / 6 : t > 130 ? (150 - t) / 20 : 1;
+  const w = 196, h = 14, x0 = 16, y0 = 14;
+  const slide = Math.round((1 - easeOutCubic(clamp(t / 10, 0, 1))) * -(w + 20));
+  const x = x0 + slide;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(30,0,6,0.85)';
+  ctx.fillRect(x, y0, w, h);
+  ctx.fillStyle = '#ff2a3a';
+  ctx.fillRect(x, y0, w, 1); ctx.fillRect(x, y0 + h - 1, w, 1);
+  // chevrons at both ends (scrolling)
+  const off = (t >> 1) % 6;
+  for (const [cx, dir] of [[x + 4, 1], [x + w - 34, 1]]) {
+    for (let k = 0; k < 4; k++) {
+      const bx = cx + k * 7 + (dir > 0 ? off % 7 : 0);
+      for (let r = 0; r < h - 4; r++) {
+        const sx = bx + Math.abs(r - (h - 4) / 2) * -0.6 + 3;
+        ctx.fillRect(Math.round(sx), y0 + 2 + r, 3, 1);
+      }
+    }
+  }
+  ctx.restore();
+  if ((t >> 3) & 1 || t > 60) drawText(ctx, 'TARGET ESCAPING', x + w / 2, y0 + 4, { style: 'red', align: 'center', alpha: a });
+}
+
+// New zone G tracker (SCREEN coords): first half "EYES ■■ SAIL ■", chase "TAIL ■■■■■".
+const isDead = (q) => {
+  if (q === null || q === undefined) return true;
+  if (typeof q !== 'object') return !q;
+  return q.state === 'broken' || q.state === 'dead' || q.state === 'destroyed' || q.dead === true || (typeof q.hp === 'number' && q.hp <= 0 && q.state !== 'ok');
+};
+export function drawHybridTracker(ctx, world, t) {
+  const b = world.boss;
+  if (!b) return;
+  const S = world.hudState && world.hudState.ev;
+  const arr = (...c) => { for (const v of c) if (Array.isArray(v)) return v; for (const v of c) if (v && typeof v === 'object') return [v]; return []; };
+  // b.mud is the boss's flying mud-clod list in zone G: the armour plates are b.mudPlates / b.armor
+  const mud = arr(b.mudPlates, b.armor);
+  const groups = (Number(b.half) === 2
+    ? [['TAIL', arr(b.tail, b.tailSegs, b.segments), '#e0a030', '#fff0a0', 'gold']]
+    : [['EYES', arr(b.eyes), '#ff3a30', '#ffd0c0', 'red'], ['SAIL', arr(b.sail, b.sails), '#e0a030', '#fff0a0', 'gold']])
+    .concat(mud.length ? [['MUD', mud, '#9a6a3a', '#e0c090', 'sand']] : []);
+  // long lists (16 mud plates) use compact 5px cells
+  const cell = (list) => (list.length > 8 ? 6 : 9);
+  const widths = groups.map(([lab, list]) => lab.length * 6 + 4 + list.length * cell(list));
+  const total = widths.reduce((a2, b2) => a2 + b2, 0) + (groups.length - 1) * 8;
+  const y = HUD_H + 12;
+  let x = W - 8 - total;
+  ctx.fillStyle = 'rgba(2,2,10,0.82)';
+  ctx.fillRect(x - 4, y - 2, total + 8, 11);
+  ctx.fillStyle = '#5a3a10';
+  ctx.fillRect(x - 4, y + 9, total + 8, 1);
+  const flash = S && S.gillFlash > 0 && (S.gillFlash >> 1) & 1;
+  groups.forEach(([lab, list, col, hi, style], gi) => {
+    drawText(ctx, lab, x, y, { style: flash ? 'white' : style, shadow: false });
+    x += lab.length * 6 + 4;
+    const step = cell(list);
+    if (step < 9) {
+      for (const q of list) {
+        ctx.fillStyle = '#6a5a70'; ctx.fillRect(x, y + 1, 5, 6);
+        if (isDead(q)) { ctx.fillStyle = '#3a2430'; ctx.fillRect(x + 1, y + 2, 3, 4); ctx.fillStyle = '#ff4050'; ctx.fillRect(x + 2, y + 3, 1, 2); }
+        else {
+          const k = q && typeof q === 'object' && q.max > 0 && typeof q.hp === 'number' ? clamp(q.hp / q.max, 0, 1) : 1;
+          const h = Math.max(1, Math.round(4 * k));
+          ctx.fillStyle = '#120810'; ctx.fillRect(x + 1, y + 2, 3, 4);
+          ctx.fillStyle = col; ctx.fillRect(x + 1, y + 6 - h, 3, h);
+          ctx.fillStyle = hi; ctx.fillRect(x + 1, y + 6 - h, 3, 1);
+        }
+        x += step;
+      }
+      x += 8;
+      return;
+    }
+    for (const q of list) {
+      ctx.fillStyle = '#6a5a70'; ctx.fillRect(x, y, 7, 7);
+      ctx.fillStyle = '#120810'; ctx.fillRect(x + 1, y + 1, 5, 5);
+      if (isDead(q)) {
+        ctx.fillStyle = '#ff4050';
+        for (let k = 0; k < 5; k++) { ctx.fillRect(x + 1 + k, y + 1 + k, 1, 1); ctx.fillRect(x + 5 - k, y + 1 + k, 1, 1); }
+      } else {
+        const k = q && typeof q === 'object' && q.max > 0 && typeof q.hp === 'number' ? clamp(q.hp / q.max, 0, 1) : 1;
+        const h = Math.max(1, Math.round(5 * k));
+        const lit = q && typeof q === 'object' && (q.lit || q.glow || q.state === 'lit' || q.state === 'up' || q.hittable);
+        ctx.fillStyle = lit && (t >> 2) & 1 ? '#ffffff' : col; ctx.fillRect(x + 1, y + 6 - h, 5, h);
+        ctx.fillStyle = hi; ctx.fillRect(x + 1, y + 6 - h, 5, 1);
+        if (q && q.state === 'cracked') { ctx.fillStyle = '#120810'; ctx.fillRect(x + 3, y + 1, 1, 3); ctx.fillRect(x + 2, y + 3, 1, 2); ctx.fillRect(x + 4, y + 4, 1, 2); }
+      }
+      x += 9;
+    }
+    x += 8;
+    void gi;
+  });
 }

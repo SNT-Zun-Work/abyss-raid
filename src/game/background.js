@@ -1,22 +1,3 @@
-// Sunken-city cavern parallax zone (bg/fx agent).
-//
-// world.bg = { scroll, speed, t, tint, darken }
-//   speed  : px/frame of the nearest back layer reference (1 = near layers move
-//            ~0.4-0.55 px). Scenes write it; a slow drift (~0.3-0.5) suits warning/boss.
-//   tint   : red emergency tint — either a number 0..1, or {r,g,b,a} (flat
-//            overlay colour), or null. Writable by scenes/boss.
-//   darken : 0..1 darkening (dramatic moods). Writable by scenes/boss.
-//
-// drawBack composes every back layer into an offscreen buffer (with a margin
-// for shake), then blits it to the screen in horizontal runs with a sine
-// x-offset — a subtle per-scanline raster wobble like 90s arcade water stages.
-//   back layers (far → near): haze water, distant spire city + submarines,
-//   light shafts, far ceiling, mid city (saucer platforms, towers, red lights),
-//   near decks/rocks with red light strips, stalactite cavern ceiling + cables.
-// drawMid   = drifting particulate + bubbles (in front of the boss, behind player).
-// drawFront = low dark rock outcrops + swaying weeds at the bottom edge.
-// Late-fight moods (bg-mood.js): phaseChange to:3 → emergency lighting,
-// to:4 → cavern collapse (also follows world.boss.phase as a fallback).
 
 import { W, H } from '../config.js';
 import { makeSprite } from '../core/util.js';

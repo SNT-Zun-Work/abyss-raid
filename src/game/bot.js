@@ -17,11 +17,9 @@ for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) DIRS.push([dx,
 
 const PROFILES = {
   perfect: { delay: 0, lagComp: 1, horizon: [4, 8, 14, 20], misread: 0, safeDelay: 0, burstChance: 1, laserAim: true },
-  // 'camper' = the degenerate strategy the owner found in ZONE G: stay in the top band and only
-  // dodge sideways (human reaction). A good design makes this clearly worse than playing the field.
   camper: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false, band: [12, 46] },
-  // band campers for other lanes (Codex r8: check for a new degenerate lane)
   midcamper: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false, band: [70, 105] },
+  watercamper: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false, band: [150, 206] },
   skimcamper: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false, band: [120, 132] },
   human: { delay: 10, lagComp: 0.7, horizon: [4, 8, 12], misread: 0.012, safeDelay: 24, burstChance: 0.5, laserAim: false },
 };
@@ -123,11 +121,6 @@ export function botInput(world, profileName = 'perfect') {
       const y = Math.min(H - 10, Math.max(12, p.y + dy * step * t));
       const wgt = 1 / t;
       for (const s of seen) {
-        // Extrapolate from the STALE position only by t: the human profile believes
-        // each bullet is where it was D frames ago (true reaction lag). Codex r6 #1:
-        // using (t + D) cancelled the delay entirely; humans do compensate part of their
-        // own lag from perceived motion, so lagComp (0..1) restores only that share.
-        // Calibration: lagComp 0.7 ≈ 3f effective lag; v0.4 (owner cleared first try) must stay ~100%.
         const k = t + D * prof.lagComp;
         const sx = s.x + s.vx * k, sy = s.y + s.vy * k;
         const rr = s.r + 5;

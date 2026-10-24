@@ -1,9 +1,3 @@
-// HOPPER packs for ZONE G: small mecha-mudskippers that leap out of the sea in
-// arcs, travelling right→left in hops; they are only above water (hittable,
-// dangerous to touch) mid-leap. A few glowing "gunners" fire once at the apex.
-// Kills build the shared CHAIN; wiping a pack pays a bonus + a guaranteed item.
-// Events: fishKill {x,y,chain}, schoolWiped {x,y,bonus,size}, schoolEscaped {left}, chainBreak.
-// Owned by the boss agent.
 import { W, H } from '../config.js';
 import * as bullets from './bullets.js';
 import * as player from './player.js';

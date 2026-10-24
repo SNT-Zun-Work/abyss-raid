@@ -1,23 +1,3 @@
-// Enemy projectiles: movement, pixel-art visuals, collision vs player.
-// Owned by the player agent. Public API (see docs/ARCHITECTURE.md):
-//   init(world) update(world) draw(ctx, world)
-//   fire(world, spec) → bullet           spec fields below
-//   clearAll(world, toScore?)            cancel all bullets (toScore → sparkle + 100 pts each)
-//   vortex(world, x, y, R, pull, killR) → n cancelled   (used by the black hole)
-//
-// spec: { x, y, vx?, vy?  |  ang?, spd?          position + velocity (either form)
-//         type: 'orb'|'needle'|'bubble'|'egg'|'larva'   (unknown → orb)
-//         r?        visual radius (defaults: orb 3, needle 2, bubble 6, egg 5, larva 2)
-//         hr?       hit radius override (default ≈0.75 r, needle 1.5)
-//         color?    'pink'|'orange'|'violet'|'red'  (orb/needle; default pink, needle magenta)
-//         life?     frames (default 900)
-//         accel?    px/f² added to speed each frame; minSpd?/maxSpd? clamp
-//         angVel?   rad/frame curve (turns the velocity)
-//         drag?     speed multiplier per frame (eggs default 0.985 down to minSpd 0.3)
-//         delay?    frames before it starts moving (still drawn and collides)
-//         homing?, homeFrames?, turn?   steer toward player for homeFrames (rad/frame turn)
-//         egg: hatch? (frames, default 90), count? (larva, default 6), larvaSpd? (1.1),
-//              spread? (rad between larva, 0.32), onHatch?(world, egg) → replaces default burst }
 import { W, H } from '../config.js';
 import { swapRemove, TAU, makeSprite } from '../core/util.js';
 import * as player from './player.js';

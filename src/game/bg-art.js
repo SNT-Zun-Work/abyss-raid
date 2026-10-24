@@ -1,14 +1,3 @@
-// Procedural pixel-art painting for the sunken-city cavern zone (bg/fx agent).
-// Everything here runs ONCE at boot (cached at module level) and produces
-// offscreen canvases that background.js composes each frame.
-//
-// Technique: shapes are drawn as flat "material masks" with the canvas path
-// API (R = material id * 14, G = shade modifier, 128 = neutral), then a shader
-// pass turns each solid pixel into a palette colour with rim-light, shadowed
-// right/under sides, texture noise and 4x4 ordered dithering — a 90s painted
-// look rather than smooth vector gradients. Emissive materials (windows, red
-// lights) keep a flat colour. Blinking lights are recorded per layer and
-// drawn live by background.js.
 
 import { W, H } from '../config.js';
 import { makeSprite } from '../core/util.js';

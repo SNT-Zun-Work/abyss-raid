@@ -1,12 +1,3 @@
-// Boss attack patterns, lasers and spectacle hazards. Owned by the boss agent.
-// Each attack is a function (world, b, atk, pose) → true when finished; atk.t
-// counts frames from 0. Attacks drive pose channels (b.jawT, b.tailCurlT,
-// atk.flare, b.mawGlow, b.portGlow) for anticipation, then fire through
-// bullets.fire. Every number that sets difficulty comes from DIFFICULTY (boss.js).
-//
-// Every hazard carries a cause id (bullets: spec.cause; lasers/rocks/contact:
-// player.hurt source.cause). CAUSES[id] = { name, hint } for the death screen.
-// While an attack runs, b.safeHint = { cause, rects:[{x,y,w,h}], text } (else null).
 import { W, H } from '../config.js';
 import { easeInOutSine, clamp } from '../core/util.js';
 import * as bullets from './bullets.js';

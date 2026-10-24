@@ -914,6 +914,96 @@ export const SFX = {
     og.gain.setTargetAtTime(0, t, 0.025);
     chain_(o, og, out);
   }],
+  // ---- new zone G (hybrid)
+  mudErupt: [0.8, (E, out, t) => {
+    // wet boom + gloopy splatter
+    boom(E, out, t, 1.6, 500, 46, 1);
+    const n = noise(E, t, t + 1.2);
+    const lp = filt(E, 'lowpass', 900, 2);
+    lp.frequency.setValueAtTime(1600, t);
+    lp.frequency.exponentialRampToValueAtTime(300, t + 1.0);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.4, t);
+    g.gain.setTargetAtTime(0, t + 0.1, 0.3);
+    chain_(n, lp, g, out);
+    // gloops: short pitched blips falling
+    for (let k = 0; k < 7; k++) {
+      const tk = t + 0.15 + k * 0.09 + (k % 3) * 0.02;
+      const f = 300 - k * 22 + (k % 2) * 60;
+      const o = osc(E, 'sine', f * 1.8, tk, tk + 0.12);
+      o.frequency.exponentialRampToValueAtTime(f * 0.6, tk + 0.1);
+      const og = gain(E);
+      og.gain.setValueAtTime(0.14, tk);
+      og.gain.setTargetAtTime(0, tk + 0.01, 0.03);
+      chain_(o, filt(E, 'lowpass', 900), og, out);
+    }
+    send(E, g, 0.4);
+  }],
+  segmentBreak: [0.1, (E, out, t) => {
+    // metal snap + mud splurt
+    SFX.armHit[1](E, out, t);
+    const o = osc(E, 'square', 2400, t, t + 0.08);
+    o.frequency.exponentialRampToValueAtTime(500, t + 0.06);
+    const og = gain(E);
+    og.gain.setValueAtTime(0.08, t);
+    og.gain.setTargetAtTime(0, t, 0.015);
+    chain_(o, filt(E, 'highpass', 800), og, out);
+    boom(E, out, t + 0.02, 0.6, 700, 70, 0.6);
+    SFX.mudLob[1](E, out, t + 0.05);
+  }],
+  // ZONE G mud armour: per-hit dry tick (rate-limited), crack stage crunch, plate break-off thud
+  mudChip: [0.07, (E, out, t) => {
+    const n = noise(E, t, t + 0.05);
+    const bp = filt(E, 'bandpass', 1800, 2.5);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.12, t);
+    g.gain.setTargetAtTime(0, t + 0.004, 0.012);
+    chain_(n, bp, g, out);
+  }],
+  mudCrack: [0.06, (E, out, t) => {
+    const n = noise(E, t, t + 0.16);
+    const bp = filt(E, 'bandpass', 1100, 1.4);
+    bp.frequency.setValueAtTime(2200, t);
+    bp.frequency.exponentialRampToValueAtTime(500, t + 0.12);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.32, t);
+    g.gain.setTargetAtTime(0, t + 0.01, 0.035);
+    chain_(n, bp, g, out);
+    boom(E, out, t, 0.18, 900, 160, 0.25);
+  }],
+  mudBreak: [0.08, (E, out, t) => {
+    // heavy slab cracking off: low thud + crumble tail + a bright metal 'ting' (bare hull revealed)
+    boom(E, out, t, 0.7, 600, 55, 0.85);
+    const n = noise(E, t, t + 0.5);
+    const lp = filt(E, 'lowpass', 1400, 1.5);
+    lp.frequency.setValueAtTime(2400, t);
+    lp.frequency.exponentialRampToValueAtTime(260, t + 0.45);
+    const g = gain(E);
+    g.gain.setValueAtTime(0.38, t);
+    g.gain.setTargetAtTime(0, t + 0.05, 0.12);
+    chain_(n, lp, g, out);
+    VOICES.bell(E, out, t + 0.09, 93, 0.25, 0.35, 0.15);
+  }],
+  // ZONE G: threading a mud-wall gap (short bright up-chime)
+  thread: [0.12, (E, out, t) => {
+    VOICES.bell(E, out, t, 86, 0.1, 0.55, -0.25);
+    VOICES.bell(E, out, t + 0.05, 90, 0.1, 0.5, 0);
+    VOICES.bell(E, out, t + 0.1, 93, 0.16, 0.5, 0.25);
+  }],
+  skip: [0.15, (E, out, t) => {
+    // splash whoosh
+    const d = 0.45;
+    const n = noise(E, t, t + d);
+    const bp = filt(E, 'bandpass', 1200, 1.2);
+    bp.frequency.setValueAtTime(700, t);
+    bp.frequency.exponentialRampToValueAtTime(2800, t + d * 0.6);
+    const g = gain(E);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.08);
+    g.gain.linearRampToValueAtTime(0, t + d);
+    chain_(n, bp, g, out);
+    SFX.splash[1](E, out, t + 0.02);
+  }],
   // continue countdown beep
   count: [0.2, (E, out, t) => {
     const o = osc(E, 'square', 880, t, t + 0.12);

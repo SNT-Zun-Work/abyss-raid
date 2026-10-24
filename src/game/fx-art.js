@@ -1,8 +1,5 @@
-// Pre-rendered FX sprite sheets (bg/fx agent). Built once at boot.
-//   fireball sheets (small/medium/large), smoke puff sheet, flash stars,
-//   bubbles, tiny pixel digit font, debris chunk generator (per CSS colour).
 import { makeSprite } from '../core/util.js';
-import { fbm2, ramp, rampPick, pixelSprite, hash, bayer } from './bg-noise.js';
+import { fbm2, ramp, rampPick, rampBand, pixelSprite, hash, bayer } from './bg-noise.js';
 import { makeBubbles } from './bg-art.js';
 
 const easeOut = (t) => 1 - (1 - t) ** 3;
@@ -203,6 +200,80 @@ export function chunkSprites(css) {
   return arr;
 }
 
+// ------------------------------------------------------------ mud wipe
+// Wet mud splats (dark brown, glossy highlights, satellite droplets) and drips.
+const MUDC = ramp('#140c08', '#1e130c', '#2a1b11', '#382416', '#48301d', '#5c3e26', '#7a5636');
+function splatSprite(R, seed) {
+  const S = R * 2 + 8, c = S / 2;
+  const lobes = 9 + (seed % 5);
+  const rad = [];
+  for (let i = 0; i < lobes; i++) rad.push(0.62 + 0.38 * hash(i, 1, seed) + (hash(i, 2, seed) < 0.25 ? 0.35 : 0));
+  const rAt = (a) => { const q = ((a / (Math.PI * 2)) % 1 + 1) % 1 * lobes, i = Math.floor(q), f = q - i; const k = f * f * (3 - 2 * f); return R * (rad[i] * (1 - k) + rad[(i + 1) % lobes] * k); };
+  const sats = [];
+  for (let i = 0; i < 6; i++) { const a = hash(i, 3, seed) * Math.PI * 2, d = R * (1.05 + 0.3 * hash(i, 4, seed)); sats.push([c + Math.cos(a) * d, c + Math.sin(a) * d, 1 + hash(i, 5, seed) * 2.2]); }
+  return pixelSprite(S, S, (x, y) => {
+    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy), r = rAt(Math.atan2(dy, dx));
+    let inside = d < r, sat = false;
+    if (!inside) for (const [sx, sy, sr] of sats) if (Math.hypot(x + 0.5 - sx, y + 0.5 - sy) < sr) { inside = true; sat = true; break; }
+    if (!inside) return null;
+    const edge = !sat && d > r - 1.5;
+    // glossy wet highlight on the upper-left
+    const hl = Math.hypot(dx + R * 0.35, dy + R * 0.35) / R;
+    if (!sat && hl < 0.06) return [200, 176, 150];                                 // specular core
+    if (!sat && hl < 0.11 && dy < dx) return [128, 96, 70];
+    let v = 0.42 - d / R * 0.25 + (hl < 0.45 ? 0.28 : 0) + (fbm2(x / 5, y / 5, 0, 0, seed, 2) - 0.5) * 0.4 - (edge ? 0.2 : 0);
+    return [...rampBand(MUDC, v, x, y, 0.3), 255];
+  });
+}
+function dripSprite(len) {
+  return pixelSprite(7, len, (x, y) => {
+    const tip = y > len - 6;
+    const w = tip ? 3 - Math.abs(y - (len - 3)) * 0.6 : 1.3 + (y / len) * 0.8;
+    if (Math.abs(x - 3) > w) return null;
+    if (x === 2 && (tip ? y === len - 5 : y % 5 === 1)) return [220, 190, 160];
+    return [...rampBand(MUDC, 0.35 - (x - 3) * 0.08, x, y, 0.3), 255];
+  });
+}
+// tall mud-and-water geyser (opaque core, ragged edges, water highlights)
+function geyserSprite() {
+  const w = 44, h = 130;
+  const G = ramp('#1e140c', '#2c1e12', '#3e2a1a', '#543a24', '#6e4e32', '#8c6844', '#ad8a60');
+  return pixelSprite(w, h, (x, y) => {
+    const f = y / h;                                         // 0 top .. 1 base
+    const half = 4 + 13 * Math.pow(f, 0.7) + (f < 0.22 ? (0.22 - f) * 70 : 0);   // flared crown
+    const n = fbm2(x / 4, y / 6, 0, 0, 91, 3);
+    const edge = half * (0.55 + 0.9 * n);
+    const dx = Math.abs(x + 0.5 - (w / 2 + Math.sin(y * 0.11) * 3 * (1 - f)));
+    if (dx > edge) return (dx < edge + 3 && n > 0.62 && bayer(x, y) < 0.3) ? [190, 200, 210, 220] : null;
+    if (dx > edge - 1.2 && n > 0.55) return [205, 214, 222];   // spray rim (water)
+    const v = 0.42 - dx / Math.max(1, edge) * 0.3 + (n - 0.5) * 0.7 + (x < w / 2 ? 0.1 : -0.08) + 0.12 * Math.sin(x * 1.3 + y * 0.25);   // flow streaks
+    return rampBand(G, v, x, y, 0.3);
+  });
+}
+// churning mud heap (3 frames) for burrowMound
+function moundSprite(f) {
+  const w = 132, h = 58;
+  const G = ramp('#120a06', '#1e130b', '#2c1c10', '#3c2816', '#4f361f', '#664629', '#825b36', '#a07446');
+  return pixelSprite(w, h, (x, y) => {
+    const u = (x + 0.5) / w * 2 - 1;
+    const lump = 0.18 * Math.sin(u * 9 + f * 2.1) + 0.12 * Math.sin(u * 17 - f * 1.3);
+    const top = h * (1 - (Math.max(0, 1 - u * u) ** 0.8) * (0.86 + lump));
+    if (y < top) return null;
+    const d = y - top;
+    const n = fbm2(x / 6 + f * 3, y / 5, 0, 0, 120 + f, 3);
+    if (d < 1.2) return n > 0.5 ? [190, 150, 104] : [150, 112, 76];            // wet lit crest
+    if (n > 0.7 && d < 10 && bayer(x, y) < 0.5) return [176, 136, 92];         // glistening clods
+    const v = 0.55 - d / h * 0.6 + (n - 0.5) * 0.5 - u * 0.12;
+    return rampBand(G, v, x, y, 0.3);
+  });
+}
+let MUDART = null;
+export function getMudArt() {
+  if (MUDART) return MUDART;
+  MUDART = { splats: [splatSprite(20, 11), splatSprite(28, 23), splatSprite(36, 37), splatSprite(24, 51), splatSprite(44, 63)], drips: [dripSprite(18), dripSprite(28), dripSprite(40)], geyser: geyserSprite(), mound: [moundSprite(0), moundSprite(1), moundSprite(2)] };
+  return MUDART;
+}
+
 let ART = null;
 export function getFxArt() {
   if (ART) return ART;
@@ -215,7 +286,7 @@ export function getFxArt() {
       [fireSheet(46, 16, 19), fireSheet(46, 16, 21, 'lobed')],
     ],
     smoke: smokeSheet(),
-    mud: smokeSheet(ramp('#1e140e', '#2c1e14', '#3c2a1c', '#4e3826', '#644a32')),
+    mud: smokeSheet(ramp('#3a2a1c', '#4e3a28', '#665036', '#806848', '#9c845e')),
     flash: flashSprites(),
     glow: glowSprite(40),
     bubbles: makeBubbles(),

@@ -1,21 +1,3 @@
-// ZONE M boss: PERIOPHTHALMUS REX — the close-up "standing / prone" mudskipper behemoth.
-// Owned by the boss agent. Same API as the other bosses (dispatched by boss.js):
-//   init update draw hitTest applyDamage bodyHit targets debugSetHpFrac CAUSES ZONE_INFO
-// world.boss: { x, y, hp, maxHp, phase, active, defeated, deathDone, safeHint, circles,
-//   hazards {x,y,vx,vy,r,g,cause,atk}, lasers [{x,y,a,w,state,atk}], fightT, stance,
-//   sails[3], fins[2] {hp,max,state}, stunT/stunFrames (FLIPPED window), mode }
-//
-// Core loop: it alternates two STANCES —
-//   STAND: rears up on its arm-fins on the water, towers, stomp-walks (splash shockwaves),
-//          maw fans and eye volleys at mid height.
-//   PRONE: crashes down flat and WRIGGLES along the bottom of the screen, firing UP
-//          (sail spine fans, mortars, eye beams) — the top isn't safe, the low lane is its body.
-// Break the 3 dorsal SAILS (and the 2 arm-FINS) → it FLIPS OVER belly-up, flailing, its
-// glowing belly CORE exposed (big damage window), then rights itself and the parts regrow.
-// Final form (<15%): the sails reignite, stance swaps speed up, BELLY FLOP spectacle
-// (two surge walls with tunnels rolling outward from the impact).
-// Art: the painted mudskipper parts (boss-mudskipper-parts.js via the Codex adapter),
-// re-posed at REX_K scale; the belly-up view is procedural for now.
 import { W, H } from '../config.js';
 import { clamp, makeSprite } from '../core/util.js';
 import * as bullets from './bullets.js';

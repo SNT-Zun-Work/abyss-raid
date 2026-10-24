@@ -1,24 +1,11 @@
-// ZONE G "SUNSET TIDELANDS" background runtime (bg/fx agent). Dispatched from
-// background.js when world.zone === 'G'.
-//
-// world.bg = { scroll, speed, t, tint, darken, surfaceY, mood }
-//   surfaceY : playfield y of the sea surface (boss agent may write it;
-//              default 0.66*H). Sky, rigs and the city sit on this horizon.
-// Back: dusk sky + low sun, drifting dramatic clouds, gulls, distant oil rigs,
-//   coastal refinery city (left) with blinking lights + gas flares, mirrored
-//   reflections + sun glint below the surface, mud seabed (rows below the
-//   surface wobble like water).
-// Mid (over the boss): translucent underwater tint below surfaceY, animated
-//   surface line, spray specks, rain (storm).
-// Front: low dark rocks at the bottom edge.
-// Moods (phaseChange to:3 / to:4, fallback boss.phase): P3 storm clouds roll
-//   in + rain + rougher sea; P4 blood-red sky, lightning, tidal surge waves.
 
 import { W, H } from '../config.js';
+import { drawMounds } from './fx.js';
 import { drawBack as drawVisualBack } from './g-visual-background.js';
 import { makeSprite } from '../core/util.js';
 import { M, BW, BH, TW } from './bg-art.js';
 import { getGArt, SURF_DEFAULT, SUN_X, SKY_EXTRA, GS_W, GS_FR } from './bg-g-art.js';
+import { initChase, updateChase, drawPainted, drawMudflat, drawChaseWater, drawPylons, drawSurge, drawChaseMid, gradeSurge } from './bg-g-chase.js';
 
 const PAR = { cloudsFar: 0.02, clouds: 0.05, rigs: 0.06, city: 0.12, mud: 0.45, front: 0.7 };
 const mod = (a, n) => ((a % n) + n) % n;
@@ -35,12 +22,14 @@ export function init(world) {
   getGArt();
   ensure();
   world.bg = { scroll: 0, speed: 0.3, t: 0, tint: 0, darken: 0, surfaceY: SURF_DEFAULT, mood: { stage: 0, storm: 0, blood: 0, bolt: null, nextBolt: 90, flashSky: 0 } };
+  initChase(world.bg);
 }
 
 export function update(world) {
   const bg = world.bg, m = bg.mood;
   bg.scroll += bg.speed || 0;
   bg.t++;
+  updateChase(world);
   const evs = Array.isArray(world.lastEvents) ? world.lastEvents : [];
   for (const e of evs) if (e && e.type === 'phaseChange' && typeof e.to === 'number') m.stage = e.to;
   const b = world.boss;
@@ -77,7 +66,7 @@ function layer(img, f, s, dy = 0) {
 const GULLS = [0, 1, 2, 3].map((i) => ({ x: 60 + i * 113, y: 26 + i * 11, v: 0.25 + i * 0.07, ph: i * 1.9 }));
 
 export function drawBack(ctx, world) {
-  if (drawVisualBack(ctx, world)) return;
+  if (drawPainted(ctx, world, drawVisualBack)) { extras(ctx, world); return; }
   const A = getGArt();
   ensure();
   const bg = world.bg, m = bg.mood, s = bg.scroll, t = bg.t;
@@ -181,6 +170,7 @@ export function drawBack(ctx, world) {
     if (d !== d0) { ctx.drawImage(buf, 0, y0, BW, y - y0, d0 - M, y0 - M, BW, y - y0); y0 = y; d0 = d; }
   }
   ctx.imageSmoothingEnabled = smooth;
+  extras(ctx, world);
 }
 
 function rowOff(y, t, amp) {
@@ -221,13 +211,15 @@ export function drawMid(ctx, world) {
   const smooth = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
   // underwater tint over everything drawn so far below the surface (boss included)
-  if (sy < H) ctx.drawImage(A.under, 0, 0, W, H - sy, 0, sy, W, H - sy);
+  // world.bg.underTint (0..1, default 1) lets the boss thin it further while it shows submerged threats
+  const ut = bg.underTint == null ? 1 : Math.max(0, Math.min(1, bg.underTint));
+  if (sy < H && ut > 0) { ctx.globalAlpha = ut; ctx.drawImage(A.under, 0, 0, W, H - sy, 0, sy, W, H - sy); ctx.globalAlpha = 1; }
   // surface line: calm = straight strip; storm / tidal surge = rolling swell
   // (strip drawn in 16-px column slices, each lifted by a slow sine).
   const sc = 1 + m.storm * 0.6 + m.blood * 1.2;
   const swell = m.storm * 3 + m.blood * 7;
   const fr = A.surface[(t >> 2) % GS_FR];
-  const ox = mod(Math.floor(s * 0.9 + t * 0.35), GS_W);
+  const ox = mod(Math.floor(s * 0.9 + t * 0.35 + (bg.chaseX || 0)), GS_W);
   if (swell < 0.5) {
     for (let x = -ox; x < W; x += GS_W) ctx.drawImage(fr, x, sy - 5);
   } else {
@@ -239,6 +231,11 @@ export function drawMid(ctx, world) {
       if (lift < 0) { ctx.fillStyle = 'rgba(16,26,70,0.5)'; ctx.fillRect(x, sy - 5 + lift + 7, 16, -lift); }   // swell body
     }
   }
+  drawChaseMid(ctx, world);
+  // exposed mudflat (first half): in front of the boss's lower body / the
+  // underwater tint, still behind the player and bullets
+  drawMudflat(ctx, world);
+  drawMounds(ctx, world);
   // spray specks hopping off the surface
   ctx.fillStyle = 'rgba(255,225,200,0.8)';
   const nSpray = 10 + Math.round(20 * (m.storm + m.blood));
@@ -268,14 +265,32 @@ const FRONT = [{ x: -10, r: 'rock' }, { x: 520, r: 'rock2' }, { x: 900, r: 'rock
 export function drawFront(ctx, world) {
   const A = getGArt();
   const { scroll: s } = world.bg;
+  const fade = 1 - Math.min(1, Math.max(0, +world.bg.chase || 0));
+  if (fade <= 0.01) return;
   const smooth = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
-  const base = mod(Math.floor(s * PAR.front), FRONT_PERIOD);
+  const base = mod(Math.floor(s * PAR.front + (world.bg.chaseX || 0) * 1.6), FRONT_PERIOD);
+  ctx.globalAlpha = fade;
   for (const g of FRONT) {
     const gx = mod(g.x - base + 160, FRONT_PERIOD) - 160;
     if (gx < -160 || gx > W + 20) continue;
     const r = A[g.r];
     ctx.drawImage(r, Math.round(gx), H - r.height + 2);
   }
+  ctx.globalAlpha = 1;
+  ctx.imageSmoothingEnabled = smooth;
+}
+
+// Hybrid-stage layers over the backdrop (playfield coords, behind the boss):
+// chase water + horizon pier + sun glow, surge waves, pylons. (The mudflat is
+// drawn in drawMid.)
+function extras(ctx, world) {
+  const A = getGArt();
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  drawChaseWater(ctx, world, A.rigs, A.HZ);
+  drawSurge(ctx, world);
+  drawPylons(ctx, world);
+  gradeSurge(ctx, world);
   ctx.imageSmoothingEnabled = smooth;
 }

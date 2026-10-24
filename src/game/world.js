@@ -14,9 +14,10 @@ import * as hud from './hud.js';
 import * as scenes from './scenes.js';
 import * as audio from './audio.js';
 
-export function createWorld({ seed = 1, scene = 'title', bossHpFrac = 1, zone = 'V' } = {}) {
+export function createWorld({ seed = 1, scene = 'title', bossHpFrac = 1, zone = 'V', kit = null } = {}) {
   const world = {
     seed,
+    kit,
     zone,              // current zone letter: 'V' axolotl, 'G' mudskipper (see boss.js BOSSES)
     startZone: zone,   // zone the current run started from (title zone select)
     continues: 0,      // continues used this run

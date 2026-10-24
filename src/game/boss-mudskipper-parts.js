@@ -1,9 +1,3 @@
-// PERIOPHTHALMUS (ZONE G) sprite parts. Owned by the boss agent.
-// Gunmetal/bronze mechanical mudskipper: big frog-like head with a wide toothy
-// red maw, two turret EYES on top (separate sprites: they pop up / retract),
-// perforated sail fins glowing orange from within, mechanical arm-fins, red
-// light strips. Built once with the shared pixel shader (boss-art.js).
-// Part space: facing LEFT, origin = the part's pivot.
 import { buildPart, buildGlow } from './boss-art.js';
 import { makeSprite } from '../core/util.js';
 import { enhanceMudSprites } from './g-visual-parts.js';

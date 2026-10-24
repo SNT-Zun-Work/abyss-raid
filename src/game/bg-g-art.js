@@ -1,10 +1,3 @@
-// ZONE G "SUNSET TIDELANDS" — pre-rendered pixel art (bg/fx agent). Built
-// lazily the first time zone G is entered, then cached.
-//
-// Silhouette technique: shapes are drawn as masks (R = id * 20: 1 body,
-// 2 lighter metal, 3+ emissive; G = shade modifier, 128 neutral), then shaded
-// as sunset back-lit silhouettes: dark body, warm rim light on top/left edges
-// (sun low on the left), haze lift toward the horizon, localised dithering.
 
 import { makeSprite } from '../core/util.js';
 import { makeRng } from '../core/rng.js';
@@ -242,7 +235,7 @@ function makeSurface() {
 // underwater tint (drawn over the boss region below the surface)
 function makeUnder() {
   return pixelSprite(W, H, (x, y) => {
-    const a = 0.2 + 0.3 * Math.min(1, y / 70);
+    const a = 0.14 + 0.18 * Math.min(1, y / 70);   // light: submerged threats must stay readable
     const q = Math.round(a * 8) / 8;
     return [16, 26, 70, Math.round(q * 255)];
   });

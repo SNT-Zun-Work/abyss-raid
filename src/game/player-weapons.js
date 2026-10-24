@@ -1,11 +1,3 @@
-// Player weapons (four gauges + bomb):
-//   LASER  (red item)    main forward shot: twin bolts → heavy twin → laser beam
-//   W WAVE (green item)  wide spread of green crescent waves
-//   HOMING (blue item)   homing missiles from above/below the ship
-//   ABYSS BURST (bomb)   limited stock: implosion → screen-wide shockwave that
-//                        cancels bullets to score and damages the boss
-// Shots live in world.pShots; collisions go through boss.hitTest/applyDamage.
-// Owned by the player agent.
 import { W, H } from '../config.js';
 import { swapRemove, TAU } from '../core/util.js';
 import * as boss from './boss.js';
@@ -44,6 +36,23 @@ export const HOMING = [
   { n: 1, cool: 50, dmg: 3 }, { n: 1, cool: 40, dmg: 3 }, { n: 2, cool: 44, dmg: 3 }, { n: 2, cool: 36, dmg: 3 },
   { n: 3, cool: 40, dmg: 3.5 }, { n: 3, cool: 32, dmg: 3.5 }, { n: 4, cool: 36, dmg: 3.5 }, { n: 4, cool: 28, dmg: 4 },
 ];
+
+export const BOSS_DPS = {
+  laser: [0, 17.1, 17.6, 18.1, 18.6, 19.1, 19.6, 20.1, 20.6],
+  wave: [0, 5, 5.2, 5.4, 5.6, 5.8, 6, 6.2, 6.5],
+  homing: [0, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3, 3.2],
+};
+// nominal all-hit DPS of the raw tables (laser incl. the Lv7+ side bolts, fired every other volley)
+export const RAW_DPS = {
+  laser: LASER.map((m) => (!m ? 0 : m.form === 'bolt' ? (2 * m.dmg * 60) / m.cool : (m.dmg * 60) / m.cool + (m.side ? (2 * m.side * 2 * 60) / (m.cool * 2) : 0))),
+  wave: WAVE.map((m) => (m ? (m.angs.length * m.dmg * 60) / m.cool : 0)),
+  homing: HOMING.map((m) => (m ? (m.n * m.dmg * 60) / m.cool : 0)),
+};
+// per-level multiplier applied to boss-part hits only (never above 1)
+export const BOSS_K = Object.fromEntries(Object.keys(BOSS_DPS).map((k) => [k, BOSS_DPS[k].map((v, i) => (i ? Math.min(1, v / RAW_DPS[k][i]) : 0))]));
+// small targets keep the full raw damage (power-ups still feel great on schools and mud)
+const isSmall = (hit) => !!hit.ref || hit.kind === 'plate';
+
 // Abyss Burst timeline (frames) and damage.
 export const BURST = { implode: 22, expand: 64, fade: 26, maxR: 330, tickEvery: 3, tickDmg: 8, coreDmg: 24, guard: 100 };
 
@@ -71,11 +80,11 @@ export function fire(world) {
   if (p.cool === 0 && p.laserLv > 0) {
     const m = LASER[p.laserLv];
     if (m.form === 'bolt') {
-      for (const s of [-1, 1]) world.pShots.push({ kind: 'bolt', heavy: m.heavy, x: nx, y: ny + s * m.gap, vx: m.spd, vy: 0, dmg: m.dmg, t: 0 });
+      for (const s of [-1, 1]) world.pShots.push({ kind: 'bolt', heavy: m.heavy, x: nx, y: ny + s * m.gap, vx: m.spd, vy: 0, dmg: m.dmg, bk: BOSS_K.laser[p.laserLv], t: 0 });
     } else {
-      world.pShots.push({ kind: 'laser', k: m.k, x: nx + 4, y: ny, vx: m.spd, vy: 0, dmg: m.dmg, t: 0 });
+      world.pShots.push({ kind: 'laser', k: m.k, x: nx + 4, y: ny, vx: m.spd, vy: 0, dmg: m.dmg, bk: BOSS_K.laser[p.laserLv], t: 0 });
       if (m.side && (p.volley & 1) === 0) {
-        for (const s of [-1, 1]) world.pShots.push({ kind: 'bolt', heavy: 0, x: nx - 6, y: ny + s * 8, vx: 9, vy: 0, dmg: m.side * 2, t: 0 });
+        for (const s of [-1, 1]) world.pShots.push({ kind: 'bolt', heavy: 0, x: nx - 6, y: ny + s * 8, vx: 9, vy: 0, dmg: m.side * 2, bk: BOSS_K.laser[p.laserLv], t: 0 });
       }
     }
     p.cool = m.cool;
@@ -86,7 +95,7 @@ export function fire(world) {
   if (p.waveCool === 0 && p.waveLv > 0) {
     const m = WAVE[p.waveLv];
     for (const a of m.angs) {
-      world.pShots.push({ kind: 'wave', x: nx, y: ny, vx: Math.cos(a) * 6, vy: Math.sin(a) * 6, ang: a, dmg: m.dmg, h: 8, h1: m.h1, t: 0 });
+      world.pShots.push({ kind: 'wave', x: nx, y: ny, vx: Math.cos(a) * 6, vy: Math.sin(a) * 6, ang: a, dmg: m.dmg, bk: BOSS_K.wave[p.waveLv], h: 8, h1: m.h1, t: 0 });
     }
     p.waveCool = m.cool;
   }
@@ -95,7 +104,7 @@ export function fire(world) {
     for (let i = 0; i < m.n; i++) {
       const side = (p.homingSide = -(p.homingSide || 1)); // alternate top/bottom
       const a = side * (1.1 + Math.floor(i / 2) * 0.35);
-      world.pShots.push({ kind: 'homing', x: p.x - 2, y: p.y + side * 4, ang: a, spd: 1.8, vx: 0, vy: 0, dmg: m.dmg, t: 0, trail: [] });
+      world.pShots.push({ kind: 'homing', x: p.x - 2, y: p.y + side * 4, ang: a, spd: 1.8, vx: 0, vy: 0, dmg: m.dmg, bk: BOSS_K.homing[p.homingLv], t: 0, trail: [] });
     }
     p.homingCool = m.cool;
     sfx('missile');
@@ -167,7 +176,9 @@ export function updateShots(world) {
     }
     if (hit) {
       hit.source = b.kind; // 'bolt'|'laser'|'wave'|'homing'
-      boss.applyDamage(world, hit, b.dmg);
+      const small = isSmall(hit), dmg = small ? b.dmg : b.dmg * (b.bk ?? 1);
+      boss.applyDamage(world, hit, dmg);
+      if (!small && world.dmgMeter) { const k = b.kind === 'bolt' ? 'laser' : b.kind; world.dmgMeter[k] = (world.dmgMeter[k] || 0) + dmg; }
       if (b.kind === 'homing') { fxc('explode', world, b.x, b.y, 'small'); sfx('hit'); }
       impact(world, b.hx, b.hy, b.kind !== 'bolt');
       swapRemove(s, i);
@@ -256,7 +267,7 @@ export function updateBurst(world) {
     fxc('explode', world, bu.x, bu.y, 'large');
     sfx('explodeL');
     const hit = hitBoss(world, bu.x, bu.y, 30);
-    if (hit) { hit.source = 'burst'; boss.applyDamage(world, hit, BURST.coreDmg); }
+    if (hit) { hit.source = 'burst'; boss.applyDamage(world, hit, BURST.coreDmg); if (world.dmgMeter && !isSmall(hit)) world.dmgMeter.burst = (world.dmgMeter.burst || 0) + BURST.coreDmg; }
   }
   if (t >= T0 && t < T1) {
     const k = (t - T0) / BURST.expand;
@@ -272,6 +283,7 @@ export function updateBurst(world) {
       if (hit) {
         hit.source = 'burst';
         boss.applyDamage(world, hit, BURST.tickDmg);
+        if (world.dmgMeter && !isSmall(hit)) world.dmgMeter.burst = (world.dmgMeter.burst || 0) + BURST.tickDmg;
         fxc('spark', world, hx, hy, world.fxRng.range(0, TAU));
       }
     }

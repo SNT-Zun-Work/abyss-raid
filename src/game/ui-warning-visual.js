@@ -49,7 +49,7 @@ export function drawWarningVisual(c, world, Z, length) {
   // (the small HUD font has no '.', so no "EST." — it rendered as "EST?")
   const ROWS = {
     V: ['ABYSS BATTLESHIP', 'APPROX 412M', 'EXTREME / ARMORED'],
-    G: ['ASSAULT CARRIER', 'APPROX 386M', 'EXTREME / MOBILE'],
+    G: ['TIDAL FLAT DESTROYER', 'APPROX 400M', 'EXTREME / EVASIVE'],
     M: ['SIEGE BEHEMOTH', 'APPROX 530M', 'EXTREME / BRUTE'],
   };
   const rows = ROWS[Z.letter] || ROWS.V;

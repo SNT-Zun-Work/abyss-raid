@@ -1,22 +1,3 @@
-// AMBYSTOMA ROSEA — giant mechanical axolotl battleship. Owned by the boss agent.
-// Public API:
-//   init(world) update(world) draw(ctx, world)
-//   hitTest(world, x, y, r) → hit object | null   (shots vs boss parts AND escorts)
-//   applyDamage(world, hit, dmg)
-//   bodyHit(world, x, y, r) → bool   (player crashing into the body / escorts)
-//   debugSetHpFrac(world, f)
-// world.boss exposes { x, y, hp, maxHp, phase, active, defeated, deathDone,
-//   aimY (best weak-point height, for bots), stunned, mode, escorts[] }
-//
-// Hit objects: { kind, part, id, mult, group, x, y }. kind is one of
-//   'armor' (x0.15, tink), 'weak' (throat/core x1.3-1.6), 'mouth' (x2),
-//   'gill' (x1, own HP, regrows), 'head'|'jaw'|'body' (skin), 'tail', 'escort'.
-//
-// Structure: a skeleton of parts (torso, 5 hull bands, head + casing, jaw +
-// chin plate, 6 two-segment gill-fins, 7 fin-blades, 4 legs, 9 tail segments)
-// posed every update with sine-chained secondary motion; hit circles come
-// from the same pose. Art is pre-rendered once (boss-parts.js/boss-art.js);
-// attacks live in boss-attacks.js, escorts in boss-escorts.js.
 
 import { W, H } from '../config.js';
 import { clamp, lerp, easeOutCubic } from '../core/util.js';
@@ -25,7 +6,7 @@ import * as player from './player.js';
 import { getSprites, TAIL, BANDS } from './boss-parts.js';
 import { ATTACKS, POOLS, BIG, updateLaser, drawLaser, setAtk } from './boss-attacks.js';
 import { initEscorts, updateEscorts, drawEscorts, hitEscort, damageEscort, escortBodyHit, killAllEscorts } from './boss-escorts.js';
-import { child, sfx, fxCall, hurtPlayer, HULL_DEBRIS, aimLead } from './boss-util.js';
+import { child, sfx, fxCall, hurtPlayer, HULL_DEBRIS, aimLead, atkLogInit, atkStarted, atkCompleted, atkCancelled, bagLeft, bagDraw } from './boss-util.js';
 import { emit } from './world.js';
 const stats = (world) => world.stats || (world.stats = { fishKills: 0, bestChain: 0, schoolsWiped: 0, stuns: 0 });
 
@@ -36,15 +17,15 @@ export const MAX_HP = 3000;
 //  gap: frames between attacks (P1 ramps 90 -> gap with heat), spd: bullet speed scale,
 //  dmgTaken: damage multiplier the boss receives (P4 is tougher), plus per-pattern knobs.
 export const DIFFICULTY = {
-  1: { surge: 0, snipe: 0, gunners: [1, 3], lead: 0, coreBursts: 3, gap: 50, spd: 1.0, dmgTaken: 1.45, stunMult: 2.5, gillHp: 16, gillRegrow: 1200, gillVolleys: 2, gillStep: 20, spreadVolleys: 3, spreadEvery: 16, spreadN: 5, spreadStep: 0.28, spreadAlt: false,
+  1: { surge: 0, snipe: 0, gunners: [1, 3], lead: 0, coreBursts: 3, gap: 50, spd: 1.0, dmgTaken: 2.15, stunMult: 2.5, gillHp: 16, gillRegrow: 1200, gillVolleys: 2, gillStep: 20, spreadVolleys: 3, spreadEvery: 16, spreadN: 5, spreadStep: 0.28, spreadAlt: false,
        needleSpd: 2.3, coreSpd: 2.6, eggN: 4, larvaN: 2, larvaSpd: 0.9, walls: 2, wallSpd: 1.1, wallGap: 26, ringN: 14, rings: 4, ringSpd: 1.15, laserEvery: 0 },
-  2: { surge: 0.3, snipe: 0, gunners: [1, 3], lead: 0.3, coreBursts: 4, gap: 22, spd: 1.4, dmgTaken: 0.7, stunMult: 2.0, gillHp: 26, gillRegrow: 900, gillVolleys: 4, gillStep: 14, spreadVolleys: 5, spreadEvery: 14, spreadN: 7, spreadStep: 0.26, spreadAlt: true,
+  2: { surge: 0.3, snipe: 0, gunners: [1, 3], lead: 0.3, coreBursts: 4, gap: 18, spd: 1.4, dmgTaken: 1.1, stunMult: 2.0, gillHp: 26, gillRegrow: 900, gillVolleys: 4, gillStep: 14, spreadVolleys: 5, spreadEvery: 14, spreadN: 7, spreadStep: 0.26, spreadAlt: true,
        needleSpd: 3.2, coreSpd: 3.6, eggN: 6, larvaN: 3, larvaSpd: 1.0, walls: 3, wallSpd: 1.25, wallGap: 22, ringN: 20, rings: 5, ringSpd: 1.35, laserEvery: 0 },
-  3: { surge: 0.4, snipe: 50, gunners: [2, 4], lead: 0.5, coreBursts: 4, gap: 12, spd: 1.6, dmgTaken: 0.5, stunMult: 1.6, gillHp: 30, gillRegrow: 540, gillVolleys: 6, gillStep: 12, spreadVolleys: 6, spreadEvery: 12, spreadN: 9, spreadStep: 0.24, spreadAlt: true,
-       needleSpd: 3.2, coreSpd: 4, eggN: 7, larvaN: 4, larvaSpd: 1.15, walls: 3, wallSpd: 1.55, wallGap: 20, ringN: 26, rings: 7, ringSpd: 1.6, laserEvery: 4 },
-  4: { surge: 0.45, snipe: 44, gunners: [3, 5], lead: 0.6, coreBursts: 5, gap: 14, spd: 1.7, dmgTaken: 0.5, stunMult: 1.5, gillHp: 34, gillRegrow: 420, gillVolleys: 6, gillStep: 12, spreadVolleys: 6, spreadEvery: 12, spreadN: 9, spreadStep: 0.24, spreadAlt: true,
-       needleSpd: 3.2, coreSpd: 4, eggN: 7, larvaN: 4, larvaSpd: 1.15, walls: 4, wallSpd: 1.4, wallGap: 19, ringN: 28, rings: 5, ringSpd: 1.6,
-       gigaEvery: 3, gigaCharge: 110, gigaFire: 120, gigaHalf: 42, rockWaves: 3, rockStep: 11, rockSafe: 20, rockSpd: 3.9, dashTell: 50, dashSpd: 9, rockEvery: 90, rockJump: 50 },
+  3: { surge: 0.4, snipe: 76, gunners: [2, 4], lead: 0.4, coreBursts: 4, gap: 24, spd: 1.5, dmgTaken: 0.36, stunMult: 1.6, gillHp: 30, gillRegrow: 540, gillVolleys: 5, gillStep: 12, spreadVolleys: 5, spreadEvery: 12, spreadN: 7, spreadStep: 0.24, spreadAlt: true,
+       needleSpd: 3.2, coreSpd: 4, eggN: 6, larvaN: 4, larvaSpd: 1.15, walls: 3, wallSpd: 1.55, wallGap: 20, ringN: 26, rings: 6, ringSpd: 1.6, laserEvery: 4 },
+  4: { surge: 0.45, snipe: 64, gunners: [2, 4], lead: 0.45, coreBursts: 4, gap: 24, spd: 1.6, dmgTaken: 0.46, stunMult: 1.5, gillHp: 34, gillRegrow: 420, gillVolleys: 4, gillStep: 12, spreadVolleys: 4, spreadEvery: 12, spreadN: 7, spreadStep: 0.24, spreadAlt: true,
+       needleSpd: 3.2, coreSpd: 4, eggN: 7, larvaN: 4, larvaSpd: 1.15, walls: 4, wallSpd: 1.4, wallGap: 19, ringN: 24, rings: 5, ringSpd: 1.6,
+       gigaEvery: 3, gigaCharge: 110, gigaFire: 120, gigaHalf: 42, rockWaves: 3, rockStep: 11, rockSafe: 26, rockSpd: 3.6, dashTell: 50, dashSpd: 9, rockEvery: 90, rockJump: 50 },
 };
 export const P4_FRAC = 0.15; // final form below this HP fraction
 export { CAUSES } from './boss-attacks.js';
@@ -114,6 +95,7 @@ export function init(world) {
     pose: null, circles: [], aimY: REST_Y, tinkCd: 0, laserCd: 0, chunkT: 0,
   };
   initEscorts(world.boss);
+  atkLogInit(world.boss);
   computePose(world.boss);
 }
 
@@ -128,6 +110,9 @@ export function debugSetHpFrac(world, f) {
   if (b.hp <= 0) { b.hp = 0; startDeath(world); world.hitstop = 0; world.flash = 0; }
   computePose(b);
 }
+
+// every attack of a phase (incl. the cadence specials) = that phase's first-rotation bag
+export const BAGS = { 1: POOLS[1], 2: POOLS[2], 3: [...POOLS[3], 'laser'], 4: [...POOLS[4], 'gigaLaser'] };
 
 // shared item drops (escorts + gills): kinds cycle so the player powers up evenly
 const ITEM_CYCLE = ['laser', 'shield', 'laser', 'wave', 'homing', 'laser', 'shield', 'wave', 'laser', 'homing', 'wave', 'bomb'];
@@ -326,6 +311,9 @@ function damageGill(world, i, dmg) {
 
 function checkPhase(world) {
   const b = world.boss;
+  // combat v2b: a phase transition never cuts the FIRST showing of an attack — it waits (a few seconds
+  // at most) until that attack completes; damage keeps applying meanwhile (no gating)
+  if (b.mode === 'fight' && b.atk && b.phase < 4 && bagLeft(b, b.atk.ph, BAGS[b.atk.ph]).includes(b.atk.name)) return;
   // a stun is never cut short: transitions wait until it ends (checkPhase runs again at stunEnd)
   if (b.phase === 1 && b.mode === 'fight' && b.hp <= b.maxHp * P2_FRAC) setMode(world, 'armorBreak');
   else if (b.phase === 2 && b.mode === 'fight' && b.hp <= b.maxHp * P3_FRAC) setMode(world, 'enrage');
@@ -409,7 +397,8 @@ function startDeath(world) {
   sfx('explodeL');
 }
 
-function endAttack(b) {
+function endAttack(b, done = false) {
+  if (b.atk && !done) atkCancelled(b, b.atk.ph, b.atk.name);
   b.atk = null;
   b.headDip = 0;
   b.laser = null;
@@ -464,7 +453,7 @@ export function update(world) {
         setAtk(b.atk.id);
         const done = ATTACKS[b.atk.name](world, b, b.atk, b.pose);
         if (b.atk) b.atk.t++;
-        if (done === true) { endAttack(b); b.gap = b.phase === 1 ? Math.round(90 - (90 - DIFFICULTY[1].gap) * heat(b)) : DIFFICULTY[b.phase].gap; }
+        if (done === true) { atkCompleted(b, b.atk.ph, b.atk.name, BAGS[b.atk.ph]); endAttack(b, true); b.gap = b.phase === 1 ? Math.round(90 - (90 - DIFFICULTY[1].gap) * heat(b)) : DIFFICULTY[b.phase].gap; }
       }
       if (b.atk && b.atk.flare) flare = b.atk.flare;
       snipe(world, b);
@@ -617,13 +606,20 @@ function pickAttack(world, b) {
   const special = b.phase === 3 && d.laserEvery ? (b.atkCount % d.laserEvery === 0 ? 'laser' : null)
     : b.phase === 4 && d.gigaEvery ? (b.atkCount % d.gigaEvery === 0 ? 'gigaLaser' : null) : null;
   let name;
-  if (special && b.lastAtk !== special) name = special;
+  // combat v2b first rotation: the scripted P4 opener (GIGA LASER) stays first, then every attack of
+  // the phase is drawn once without replacement (until each has COMPLETED), then normal selection
+  if (b.phase === 4 && b.atkCount === 0 && special) name = special;
+  else if (b.bagHold && b.bagHold.ph === b.phase && bagLeft(b, b.phase, BAGS[b.phase]).includes(b.bagHold.name)) name = b.bagHold.name; // drawn, waiting for a quiet screen
+  else if (bagLeft(b, b.phase, BAGS[b.phase]).length) name = bagDraw(world, b, b.phase, BAGS[b.phase]);
+  else if (special && b.lastAtk !== special) name = special;
   else name = world.rng.pick(pool);
   // spectacle attacks start only on a near-empty screen so their SAFE zones are really safe
   const quiet = BIG.has(name) || name === 'laser' ? 12 : Infinity;
-  if (world.eShots.length >= quiet) { b.gap = 20; return; }
+  if (world.eShots.length >= quiet) { b.gap = 20; b.bagHold = { name, ph: b.phase }; return; }
+  b.bagHold = null;
   b.atkSeq++;
-  b.atk = { name, t: 0, id: b.atkSeq };
+  b.atk = { name, t: 0, id: b.atkSeq, ph: b.phase };
+  atkStarted(b, b.phase, name);
   emit(world, { type: 'attackStart', cause: name, name, big: BIG.has(name), atk: b.atkSeq });
   b.lastAtk = name;
   b.atkCount++;

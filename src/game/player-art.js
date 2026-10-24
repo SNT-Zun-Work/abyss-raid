@@ -1,7 +1,3 @@
-// Pre-rendered pixel art for the player ship, its shots, shield, items and the
-// Abyss Burst. Everything is rasterised once per pixel (ImageData) so it stays
-// crisp under the nearest-neighbour upscale; draw code only blits these.
-// Owned by the player agent.
 import { makeSprite, TAU } from '../core/util.js';
 
 // ---------------------------------------------------------------- helpers

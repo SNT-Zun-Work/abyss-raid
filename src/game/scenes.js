@@ -12,6 +12,7 @@
 
 import { W, H, HUD_H } from '../config.js';
 import * as touchMod from '../core/touch.js';
+import { track, scoreBucket } from '../core/analytics.js';
 import { clamp, lerp, easeOutCubic } from '../core/util.js';
 import * as audio from './audio.js';
 import * as world_ from './world.js'; // circular, used only at runtime (resetRun/enterZone/continueRun)
@@ -20,9 +21,8 @@ import * as bossF from './boss.js'; // facade: zoneInfo, ZONE_ORDER (runtime onl
 const ZDEF = {
   V: { letter: 'V', name: 'AMBYSTOMA ROSEA', title: 'GIGANTIC AMPHIBIOUS BATTLESHIP', area: 'ABYSSAL TRENCH' },
   G: { letter: 'G', name: 'PERIOPHTHALMUS', title: 'AMPHIBIOUS ASSAULT CARRIER', area: 'SUNSET TIDELANDS' },
-  M: { letter: 'M', name: 'PERIOPHTHALMUS REX', title: 'AMPHIBIOUS SIEGE BEHEMOTH', area: 'MUDFLAT FRONT' },
 };
-const CARD_AREA = { V: 'CAVERN', G: 'TIDELANDS', M: 'MUDFLAT' };
+const CARD_AREA = { V: 'CAVERN', G: 'TIDELANDS' };
 export function zinfo(world) {
   let z = null;
   try { z = typeof bossF.zoneInfo === 'function' ? bossF.zoneInfo(world) : null; } catch (e) { z = null; }
@@ -36,7 +36,7 @@ export const CONTINUE_LEN = 600; // 9..0, one number per second
 const ALLCLEAR_LEN = 900;
 import { drawText, textWidth, bigText, bigLayout, drawBig } from './ui-font.js';
 import { drawEvents, causeInfo } from './ui-events.js';
-import { drawKeyArt } from './ui-presentation-visual.js';
+import { drawKeyArt, presentationArt } from './ui-presentation-visual.js';
 import { drawWarningVisual } from './ui-warning-visual.js';
 import { isTouchUI, startPrompt } from './ui-touch.js';
 import { vignette, keyCap } from './ui-art.js';
@@ -68,8 +68,6 @@ function saveHi(world) {
   try { localStorage.setItem(HI_KEY, String(world.hiScore)); } catch (e) { /* ignore */ }
 }
 
-// Fresh run: the lead's world.resetRun re-seeds rng/fxRng, clears shots/items and
-// re-inits every gameplay module (hiScore is kept).
 function resetRun(world, zone) {
   if (typeof world_.resetRun === 'function') world_.resetRun(world, zone);
 }
@@ -87,11 +85,28 @@ export function goto(world, scene) {
   if (scene === 'boss' && world.boss) world.boss.active = true;
   if (scene === 'boss' && world.player) world.sceneState.startLives = world.player.lives;
   if (scene === 'clear' || scene === 'gameover') saveHi(world);
+  trackScene(world, prev, scene);
   if (world.bg) {
     if (scene === 'title') world.bg.speed = 0.4;
     if (scene !== 'warning') world.bg.tint = 0;
   }
   audio.onScene(world, scene);
+}
+
+// anonymous play stats (no-op outside the published build, see core/analytics.js)
+function trackScene(world, prev, scene) {
+  const z = world.zone || 'V';
+  if (scene === 'warning' && prev === 'gameover') track(`retry/${z}`, `retry ${z}`);
+  if ((scene === 'warning' || scene === 'approach') && prev === 'title') {
+    track(`start/${z}`, `start ${z}`);
+    let dev = 'desktop';
+    try { if (isTouchUI()) dev = 'touch-' + (typeof touchMod.touchMode === 'function' ? touchMod.touchMode() : 'on'); } catch (e) { /* ignore */ }
+    track(`device/${dev}`, `device ${dev}`);
+  }
+  if (scene === 'clear') track(`clear/${z}`, `clear ${z}`);
+  if (scene === 'continue') track(`continue/${z}`, `continue ${z}`);
+  if (scene === 'gameover') { track(`gameover/${z}`, `game over ${z}`); track(`score/${scoreBucket(world.score)}`, 'score'); }
+  if (scene === 'allclear') { track('allclear', 'all clear'); track(`score/${scoreBucket(world.score)}`, 'score'); }
 }
 
 export function gameplayActive(world) { return GAMEPLAY.has(world.scene); }
@@ -322,7 +337,8 @@ const typed = (str, t, t0, per = 2) => str.slice(0, clamp(Math.floor((t - t0) / 
 // --- title
 let logoBuf = null;
 function drawLogo(ctx, cx, y, t) {
-  const text = 'ABYSS RAID';
+  const text = 'AXARIUS';
+  if(presentationArt.logo){ctx.save();ctx.imageSmoothingEnabled=true;ctx.globalAlpha=clamp(t/45,0,1);ctx.drawImage(presentationArt.logo,cx-151,y-8,302,54);ctx.restore();return;}
   const S = 4, gap = 3, style = 'abyss';
   const full = bigText(text, { style, scale: S, italic: true, gap });
   const x0 = Math.round(cx - full.width / 2);
@@ -425,7 +441,7 @@ function drawControls(ctx, y, alpha) {
 function drawTouchControls(ctx, px0, y, alpha) {
   const lx = px0 + 8;
   const rows = [
-    ['DRAG ANYWHERE', 'MOVE (AUTO-FIRE)', 'cyan'],
+    ['DRAG PAD', 'MOVE  (AUTO-FIRE ALWAYS ON)', 'cyan'],
     ['BURST', 'ABYSS BURST  (ON-SCREEN BUTTON)', 'pink'],
     ['TAP', 'START  /  TAP A ZONE CARD TO PICK', 'white'],
   ];
@@ -472,7 +488,7 @@ function drawTitle(ctx, world) {
   for (let i = 0; i < 17; i++) { const x = (i * 71 + 13) % W, y = (i * 41 + 216 - t * (0.12 + i % 3 * .04)) % 216; ctx.fillRect(x, (y + 216) % 216, 1, 2); }
   drawLogo(ctx, W / 2, 12, t);
   if (t >= 56) {
-    drawBig(ctx, 'AXOLOTL', W / 2, 47, {style:'pink', scale:2, gap:5});
+    drawText(ctx, 'MECHA-FISH BOSS RUSH', W / 2, 58, {style:'cyan', align:'center'});
     drawZoneSelect(ctx, world, CARD_Y, clamp((t - 56) / 20, 0, 1));
   }
   if (t >= 70) {

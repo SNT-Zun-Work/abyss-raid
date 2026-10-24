@@ -1,7 +1,3 @@
-// PERIOPHTHALMUS (ZONE G) attacks, gravity projectiles, shockwaves, tidal wave.
-// Owned by the boss agent. Each attack: (world, b, atk) → true when finished.
-// Mud balls live in b.mud (own physics: gravity, slowed under the water);
-// b.hazards mirrors them for the bots. Every hazard carries cause + atk.
 import { W, H } from '../config.js';
 import { clamp } from '../core/util.js';
 import * as bullets from './bullets.js';

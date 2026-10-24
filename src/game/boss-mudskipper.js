@@ -1,19 +1,3 @@
-// ZONE G boss: PERIOPHTHALMUS — amphibious assault carrier (mechanical mudskipper).
-// Owned by the boss agent. Same API as boss-axolotl.js (dispatched by boss.js):
-//   init update draw hitTest applyDamage bodyHit targets debugSetHpFrac CAUSES ZONE_INFO
-// world.boss: { x, y, hp, maxHp, phase, active, defeated, deathDone, safeHint, circles,
-//   hazards (gravity projectiles + wave points for bots: {x,y,vx,vy,r,g}), lasers, fightT,
-//   stunT/stunFrames (BLINDED crash window), eyes, mode }
-//
-// Play feel (vs the axolotl): an ACROBAT. It hops and lobs mud on its perch, makes
-// big parabolic LEAPS across the screen (landing on the LEFT behind the player,
-// telegraphed by a landing shadow), DIVES under the sea surface and BURSTS out,
-// sends SHOCKWAVES along the surface, exposes its BELLY mid-leap (big damage),
-// raises turret EYES (destroy both → BLINDED → it crashes = damage window), and
-// releases HOPPER packs that leap in arcs (wipe a pack → item). FINAL FORM: the
-// sails ignite, it glides, mud rains, and a TIDAL WAVE sweeps the screen (ride the gap).
-//
-// Space is split by the water surface at SURFACE_Y (shared with the background).
 import { W, H } from '../config.js';
 import { clamp } from '../core/util.js';
 import * as bullets from './bullets.js';

@@ -1,19 +1,3 @@
-// Keyboard + gamepad (+ touch) → a flat per-frame input snapshot. Bots/tests write the
-// same shape via world.input override (see main.js), so game code never reads
-// devices directly.
-//   { x:-1..1, y:-1..1, shot:bool, bomb:bool, bombPressed:bool, start:bool }
-// Presses are latched on keydown so a tap that starts and ends between two
-// simulation steps is still seen once.
-//
-// Robustness (owner report 2026-10-24: in Chrome the ship sometimes drifts up or
-// only moves left/right):
-//  - KEYBOARD WINS: while any direction key is held, gamepad/touch directions are ignored.
-//  - A gamepad is ignored until it is ENGAGED (a button press, or a stick pushed well
-//    away from its resting value). Resting axis values are captured per pad and
-//    subtracted, with a larger dead zone, so a drifting stick or a device that merely
-//    reports axes (wheels, adapters, virtual pads) can't steer the ship.
-//  - IME composition key events are ignored; input resets on blur / tab hidden.
-//  - ?inputdebug=1 shows the raw keyboard/pad state in a corner overlay.
 
 import { readTouch, resetTouch } from './touch.js';
 

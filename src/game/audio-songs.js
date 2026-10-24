@@ -281,7 +281,8 @@ export function gameoverJingle() {
 // 1-bar percussion intro + 24-bar loop (A riff 8, B soaring 8, C drum break 4, D build 4).
 export function mudTheme(opts = {}) {
   const FINAL = !!opts.final;
-  const S = song(FINAL ? 180 : 172);
+  const CHASE = !!opts.chase; // skip chase: 184 BPM, no drum break, four-on-the-floor + driving 8th slap
+  const S = song(FINAL ? 180 : CHASE ? 184 : 172);
   const { add } = S;
   const INTRO = 1;
   const bar = (b) => (INTRO + b) * 16;
@@ -302,10 +303,11 @@ export function mudTheme(opts = {}) {
   const SLAP_D = [[0, 0, 1], [2, 0, 0.8], [4, 12, 0.9], [6, 0, 0.8], [8, 0, 1], [10, 12, 0.9], [12, 0, 0.9], [14, 12, 1]];
   prog.forEach(([root, q], b) => {
     const s0 = bar(b);
-    const sec = b < 8 ? 'A' : b < 16 ? 'B' : b < 20 ? 'C' : 'D';
+    let sec = b < 8 ? 'A' : b < 16 ? 'B' : b < 20 ? 'C' : 'D';
+    if (CHASE && sec === 'C') sec = 'D';
     const r = root - 12; // bass register
     // ---- slap bass
-    const pat = sec === 'D' ? SLAP_D : SLAP;
+    const pat = sec === 'D' || CHASE ? SLAP_D : SLAP;
     if (sec !== 'C' || b === 19) for (const [k, o, v] of pat) add(s0 + k, 'bass', r + o, o >= 12 ? 1 : 2, v);
     else for (const k of [0, 8]) add(s0 + k, 'bass', r, 4, 0.9);
     // ---- pad / choir
@@ -325,7 +327,8 @@ export function mudTheme(opts = {}) {
       if (b === 16) D(0, 'crash', 1);
       if (b === 19) for (let k = 8; k < 16; k++) D(k, 'snare', 0.3 + (k - 8) * 0.09);
     } else {
-      for (const k of sec === 'D' ? [0, 4, 8, 12] : [0, 3, 7, 10, 14]) D(k, 'kick', k === 0 ? 1 : 0.85);
+      for (const k of sec === 'D' || CHASE ? [0, 4, 8, 12] : [0, 3, 7, 10, 14]) D(k, 'kick', k === 0 ? 1 : 0.85);
+      if (CHASE) { D(10, 'kick', 0.6); [[3, 57], [7, 52], [11, 57], [15, 52]].forEach(([k, m]) => D(k, 'tom', 0.5, m)); }
       D(4, 'snare'); D(12, 'snare');
       for (const k of [2, 9, 15]) D(k, 'snare', 0.18); // ghost notes
       [[5, 57], [6, 52], [13, 59]].forEach(([k, m]) => D(k, 'tom', 0.45, m)); // conga answers
@@ -372,5 +375,6 @@ export function mudTheme(opts = {}) {
   return S;
 }
 export const mudFinalTheme = () => mudTheme({ final: true });
+export const mudChaseTheme = () => mudTheme({ chase: true });
 
-export const SONGS = { mud: mudTheme, mudFinal: mudFinalTheme, boss: bossTheme, final: finalTheme, title: titleTheme, approach: approachTheme, victory: victoryJingle, gameover: gameoverJingle };
+export const SONGS = { mud: mudTheme, mudFinal: mudFinalTheme, mudChase: mudChaseTheme, boss: bossTheme, final: finalTheme, title: titleTheme, approach: approachTheme, victory: victoryJingle, gameover: gameoverJingle };

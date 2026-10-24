@@ -8,10 +8,10 @@
 import * as axolotl from './boss-axolotl.js';
 import * as mudskipper from './boss-mudskipper.js';
 import * as mudflat from './boss-mudflat.js';
+import * as skipper from './boss-skipper.js';
 
-//   ZONE M — PERIOPHTHALMUS REX (close-up standing/prone mudskipper rebuild) → boss-mudflat.js
-export const BOSSES = { V: axolotl, G: mudskipper, M: mudflat };
-export const ZONE_ORDER = ['V', 'G', 'M'];
+export const BOSSES = { V: axolotl, G: skipper, G0: mudskipper, M: mudflat };
+export const ZONE_ORDER = ['V', 'G'];
 
 const cur = (world) => BOSSES[world && world.zone] || axolotl;
 export const current = cur;
@@ -27,7 +27,7 @@ export const debugSetHpFrac = (world, f) => cur(world).debugSetHpFrac(world, f);
 export const zoneInfo = (world) => cur(world).ZONE_INFO || { letter: world.zone || 'V' };
 
 // Cause table for death feedback: union of all bosses (ids are namespaced by each boss).
-export const CAUSES = { ...(axolotl.CAUSES || {}), ...(mudskipper.CAUSES || {}), ...(mudflat.CAUSES || {}) };
+export const CAUSES = { ...(axolotl.CAUSES || {}), ...(mudskipper.CAUSES || {}), ...(mudflat.CAUSES || {}), ...(skipper.CAUSES || {}) };
 
 // Axolotl gill HUD compat (ui-events.js): only meaningful while the axolotl is the boss.
 export const GILL_REGROW = axolotl.GILL_REGROW;

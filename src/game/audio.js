@@ -18,6 +18,8 @@ const SCENE_SONG = { title: 'title', approach: 'approach', warning: null, boss: 
 // boss music per zone: [normal, final form]
 const ZONE_SONGS = { V: ['boss', 'final'], G: ['mud', 'mudFinal'], M: ['mud', 'mudFinal'] };
 const zoneSong = (world, final) => {
+  // new zone G: second half (skip chase) uses the driving chase variant
+  if (!final && world && world.zone === 'G' && world.boss && Number(world.boss.half) === 2) return 'mudChase';
   const z = ZONE_SONGS[(world && world.zone) || 'V'] || ZONE_SONGS.V;
   return z[final ? 1 : 0];
 };
@@ -182,7 +184,8 @@ function handleEvents(world) {
       switch (e.type) {
         case 'schoolWiped': sfx('wipe'); break;
         case 'skimBonus': sfx('skim', Number(e.value) || 500); break;
-        case 'gillKill': sfx('gillTear'); break;
+        case 'gillKill': sfx(e.part === 'tail' ? 'segmentBreak' : 'gillTear'); break;
+        case 'escape': sfx('mudErupt'); break;
         case 'gillRegrow': sfx('regrow'); break;
         case 'stunStart': sfx('stun'); duckMusic(E, ctx.currentTime, (Number(e.frames) || 240) / 60); break;
         case 'stunEnd': unduckMusic(E, ctx.currentTime); break;
@@ -191,6 +194,7 @@ function handleEvents(world) {
           break;
         case 'phaseChange':
           if (Number(e.to) === 4) { sfx('bossRoar'); playSong(zoneSong(world, true)); }
+          else if (Number(e.to) === 2 && world && world.zone === 'G' && world.boss && world.boss.half !== undefined) playSong('mudChase');
           break;
         case 'playerDeath': break; // 'death' sfx is fired by the player module
       }

@@ -1,13 +1,3 @@
-// Late-fight background moods (bg/fx agent). Cosmetic only; spawns use
-// world.fxRng. Driven by world.lastEvents {type:'phaseChange', to} with a
-// fallback to world.boss.phase while the boss scene runs.
-//   stage 3 → EMERGENCY: red pulsing alarm lights across the city, extra
-//             particulate, distant structures occasionally collapse (dust
-//             plume + falling debris in the far plane).
-//   stage 4 → CAVERN COLLAPSE: falling rocks + dust streams from the ceiling,
-//             ceiling cracks leaking light, stronger raster wave, heavy
-//             red/violet grade.
-// State lives in world.bg.mood (reset by background.init).
 
 import { W, H } from '../config.js';
 import { pixelSprite, bayer, hash } from './bg-noise.js';

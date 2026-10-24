@@ -1,6 +1,6 @@
-# ABYSS RAID — AXOLOTL
+# AXARIUS — Mecha-Fish Boss Rush
 
-A browser arcade shoot-'em-up boss fight against a giant mechanical axolotl.
+A browser arcade shoot-'em-up boss rush against giant mechanical sea creatures.
 Original fan-made game inspired by 90s arcade horizontal shooters. All graphics and music are
 original procedural or AI-generated artwork; no assets from any commercial game are used.
 
@@ -13,4 +13,7 @@ original procedural or AI-generated artwork; no assets from any commercial game 
 | Abyss Burst | H | BURST button |
 | Mute | M | — |
 
-Version: v0.9.1
+Privacy: anonymous play counts (page views and game events such as start / clear / game over)
+are collected with GoatCounter, without cookies or personal data.
+
+Version: v0.10

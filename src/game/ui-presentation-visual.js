@@ -1,13 +1,13 @@
 // Presentation-only painted key art. Failure never delays boot beyond eight seconds.
 import { makeSprite } from '../core/util.js';
 import { titleSilhouette } from './ui-art.js';
-export const presentationArt = { V: null, G: null };
+export const presentationArt = { V: null, G: null, logo: null };
 export async function loadPresentationArt() {
   await Promise.all(Object.keys(presentationArt).map(async z => {
     const img = new Image();
     let timer;
     try {
-      img.src = new URL(`../../assets/ui/${z.toLowerCase()}-keyart.webp`, import.meta.url).href;
+      img.src = new URL(`../../assets/ui/${z === 'logo' ? 'axarius-logo' : z.toLowerCase() + '-keyart'}.webp`, import.meta.url).href;
       await Promise.race([img.decode(), new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('timeout')), 8000);
       })]);

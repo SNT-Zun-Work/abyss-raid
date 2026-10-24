@@ -1,10 +1,3 @@
-// MECH GULLS (ZONE G): flocks of small robotic seabirds that cruise in from the
-// right along the TOP of the screen in a V, then — one after another, each
-// flashing cyan and showing its dotted dive path for a moment — swoop down
-// through the ship's position and climb away. They make the top band unsafe.
-// Shootable (1–2 hits); wiping a flock pays a bonus (every 2nd wipe drops an
-// item, which floats down to the water). Contact cause: 'mudGull'.
-// Owned by the boss agent.
 import { W, H } from '../config.js';
 import * as player from './player.js';
 import { sfx, fxCall } from './boss-util.js';

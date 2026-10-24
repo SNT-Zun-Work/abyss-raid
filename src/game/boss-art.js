@@ -1,14 +1,3 @@
-// Boss art: a tiny offline "pixel shader" that pre-renders every boss part once.
-// Owned by the boss agent.
-//
-// Each part is described by primitives (ellipsoids, tapered capsules, bevelled
-// polygons) in part space (origin = the part's pivot). We rasterize them per
-// pixel into a normal buffer, light them with a top-down "water surface" light,
-// quantize into hand-picked palette ramps with ordered dithering (stepped,
-// deliberate pixel-art shading), then add decals (panel lines, rivets, spots),
-// selective seams and a dark outline. Variants (white hit-flash, dark
-// silhouette, red "enraged" flush, far-side darkened) are produced at the same
-// time so the per-frame cost is only drawImage calls.
 
 import { makeSprite } from '../core/util.js';
 

@@ -1,4 +1,3 @@
-// Shared helpers for the boss modules. Owned by the boss agent.
 import * as fx from './fx.js';
 import * as audio from './audio.js';
 
@@ -32,6 +31,30 @@ export function hurtPlayer(world, source) {
   const contact = typeof source === 'object';
   if (!contact && typeof player.absorbHit === 'function' && player.absorbHit(world)) return;
   player.killPlayer(world);
+}
+
+export function atkLogInit(b) { b.atkLog = {}; b.bagDone = {}; }
+function logRow(b, ph, name) {
+  const P = (b.atkLog[ph] ||= {});
+  return (P[name] ||= { s: 0, c: 0, x: 0 });
+}
+export function atkStarted(b, ph, name) { logRow(b, ph, name).s++; }
+export function atkCancelled(b, ph, name) { logRow(b, ph, name).x++; }
+export function atkCompleted(b, ph, name, bag) {
+  logRow(b, ph, name).c++;
+  if (bag && !b.bagDone[ph] && bagLeft(b, ph, bag).length === 0) { b.bagDone[ph] = Math.max(1, b.fightT | 0); (b.bagHp ||= {})[ph] = b.hp; }
+}
+// attacks of `bag` not yet completed in phase ph (draw order = without replacement)
+export function bagLeft(b, ph, bag) {
+  const P = b.atkLog[ph] || {};
+  return bag.filter((n) => !(P[n] && P[n].c > 0));
+}
+// draw from the bag (never the same attack twice in a row when there is a choice)
+export function bagDraw(world, b, ph, bag) {
+  const left = bagLeft(b, ph, bag);
+  if (!left.length) return null;
+  const pool = left.filter((n) => n !== b.lastAtk);
+  return world.rng.pick(pool.length ? pool : left);
 }
 
 // hull/fin coloured debris for fx.explode over the boss (avoids grey specks)

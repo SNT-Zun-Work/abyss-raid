@@ -1,6 +1,3 @@
-// Painted-art assets for ZONE V (Codex visual pass). Loaded before world creation;
-// any asset that fails or takes longer than LOAD_TIMEOUT_MS is skipped and the
-// procedural art is used instead (Codex r9: never hang on NOW LOADING).
 export const axolotlAssets = { background: null, parts: null };
 const LOAD_TIMEOUT_MS = 8000;
 const timeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));

@@ -1,7 +1,3 @@
-// PERIOPHTHALMUS REX (ZONE M) attacks + beams + surge walls. Owned by the boss agent.
-// Each attack: (world, b, atk) → true when finished. Stance changes are attacks too
-// (slam: stand→prone, rise: prone→stand). Mud uses G's gravity physics (b.mud via
-// boss-mudskipper-attacks updateHazards); beams and surges are handled here.
 import { W, H } from '../config.js';
 import { clamp } from '../core/util.js';
 import * as bullets from './bullets.js';
